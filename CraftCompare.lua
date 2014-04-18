@@ -123,11 +123,9 @@ local function Initialize(eventCode, arg1, ...)
 			if not ZO_SmithingTopLevel:IsHidden() and addon.object and (
 				(addon.object.mode == 4 and GetSetting('extract')) or
 				(addon.object.mode == 5 and GetSetting('research')) ) then
-				d('showing comparative tooltips')
 				self:ShowComparativeTooltips()
 			end
 		end
-		d('hooked ItemTooltip.SetBagItem')
 	end
 
 	-- show/hide tooltip when changing crafting modes
