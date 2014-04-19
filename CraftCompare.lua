@@ -3,6 +3,7 @@ local addonName, addon, _ = 'CraftCompare', {}
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
 * fix ComparativeTooltip1 hiding when hovering things while crafting
+* fix ComparativeTooltip1 still showing when PopupTooltip is closed
 --]]
 
 -- GLOBALS: _G, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
@@ -26,13 +27,12 @@ local anchors = {
 	-- [4] = { BOTTOM, TOP, 0, -80 },
 }
 local function ShowCraftingComparisons(slot, otherSlot)
-	if not addon.object then return end
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
-	if not itemLink or itemLink == '' then return end
+	if not addon.object or not itemLink or itemLink == '' then return end
 
 	-- positioning
 	local tooltip = PopupTooltip
-	      tooltip:ClearAnchors()
+	tooltip:ClearAnchors()
 	local from, to, dx, dy = unpack(anchors[addon.object.mode] or {})
 	local anchor = addon.object.mode == 2 and addon.object.creationPanel.resultTooltip
 		or addon.object.mode == 3 and addon.object.improvementPanel.resultTooltip
@@ -103,7 +103,6 @@ end
 local function Initialize(eventCode, arg1, ...)
 	if arg1 ~= addonName then return end
 
-	-- addon.db = ZO_SavedVars:New(addonName..'DB', 1, nil, {
 	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 1, nil, {
 		tooltipStyle = 'PopupTooltip',
 		create = true,
@@ -122,6 +121,13 @@ local function Initialize(eventCode, arg1, ...)
 	ZO_PreHook(ZO_SmithingCreation, 'OnSelectedPatternChanged', UpdateCraftingComparison)
 	ZO_PreHook(ZO_SmithingImprovement, 'OnSlotChanged', UpdateCraftingComparison)
 	ZO_PreHook(ZO_SmithingExtraction,  'OnSlotChanged', UpdateCraftingComparison)
+
+	ZO_PreHook(PopupTooltip, 'SetHidden', function(self, hidden)
+		if not ZO_SmithingTopLevel:IsHidden() and ComparativeTooltip1 then
+			-- hide ComparativeTooltip1 when hiding PopupTooltip
+			ComparativeTooltip1:SetHidden(true)
+		end
+	end)
 
 	if GetSetting('tooltipStyle') == 'ComparativeTooltip' then
 		local orig = ItemTooltip.SetBagItem
@@ -184,4 +190,4 @@ end
 
 local em = GetEventManager()
 em:RegisterForEvent('CraftCompare_Loaded', EVENT_ADD_ON_LOADED, Initialize)
-em:RegisterForEvent('CraftCompare_CraftClose', EVENT_END_CRAFTING_STATION_INTERACT, ShowCraftingComparisons)
+em:RegisterForEvent('CraftCompare_CraftClose', EVENT_END_CRAFTING_STATION_INTERACT, UpdateCraftingComparison)
