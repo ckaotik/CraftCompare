@@ -2,7 +2,7 @@ local addonName, addon, _ = 'CraftCompare', {}
 
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
-* Deconstruction shows wrong item or none at all
+* fix ComparativeTooltip1 hiding when hovering things while crafting
 --]]
 
 -- GLOBALS: _G, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
@@ -53,6 +53,10 @@ local function ShowCraftingComparisons(slot, otherSlot)
 		otherTooltip:ClearLines()
 		otherTooltip:SetBagItem(BAG_WORN, otherSlot)
 		otherTooltip:SetHidden(false)
+		-- show animation
+		if otherTooltip:GetAlpha() == 0 then
+			otherTooltip.showAnimation:PlayFromStart()
+		end
 	end
 end
 
@@ -63,7 +67,10 @@ local function UpdateCraftingComparison()
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
-	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then return end
+	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then
+		ItemTooltip:ShowComparativeTooltips()
+		return
+	end
 
 	-- create item link to get slot info
 	local itemLink
@@ -79,7 +86,7 @@ local function UpdateCraftingComparison()
 		-- improve items
 		local bag, slot, quantity = addon.object.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
-	elseif addon.object.mode == 4 and addon.db.extract and addon.object.deconstructionPanel:HasSelections()then
+	elseif addon.object.mode == 4 and addon.db.extract and addon.object.deconstructionPanel:HasSelections() then
 		-- extract items / deconstruction
 		local itemSlot = addon.object.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
@@ -105,9 +112,14 @@ local function Initialize(eventCode, arg1, ...)
 		research = false,
 	})
 
+	-- addon exposure
+	-- ----------------------------------------------------
+	addon.name = addonName
+	_G[addonName] = addon
+
 	-- hooks
 	-- ----------------------------------------------------
-	ZO_PreHook(ZO_SmithingCreation,    'OnSelectedPatternChanged', UpdateCraftingComparison)
+	ZO_PreHook(ZO_SmithingCreation, 'OnSelectedPatternChanged', UpdateCraftingComparison)
 	ZO_PreHook(ZO_SmithingImprovement, 'OnSlotChanged', UpdateCraftingComparison)
 	ZO_PreHook(ZO_SmithingExtraction,  'OnSlotChanged', UpdateCraftingComparison)
 
@@ -119,7 +131,14 @@ local function Initialize(eventCode, arg1, ...)
 			if not ZO_SmithingTopLevel:IsHidden() and addon.object and (
 				(addon.object.mode == 4 and GetSetting('extract')) or
 				(addon.object.mode == 5 and GetSetting('research')) ) then
+				-- we want to show comparative tooltips
 				self:ShowComparativeTooltips()
+				for i = 1, 2 do
+					local tooltip = _G['ComparativeTooltip'..i]
+					if not tooltip:IsHidden() and tooltip.showAnimation then
+						tooltip.showAnimation:PlayFromStart()
+					end
+				end
 			end
 		end
 	end
@@ -161,11 +180,6 @@ local function Initialize(eventCode, arg1, ...)
 		function(...) return GetSetting('tooltipStyle') end, function(value) SetSetting('tooltipStyle', value) end,
 		true, 'Requires UI reload')
 	LAM:AddDescription(panelID, addonName..'Description', 'You may change the way item comparisons are presented to you.\nPopupTooltip does not yet support "Research" mode.', nil)
-
-	-- addon exposure
-	-- ----------------------------------------------------
-	addon.name = addonName
-	_G[addonName] = addon
 end
 
 local em = GetEventManager()
