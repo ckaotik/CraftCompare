@@ -1,8 +1,6 @@
 local addonName, addon, _ = 'CraftCompare', {}
 
 --[[-- TODO --
-? PopupTooltip does not hide when leaving crafting dialog
-* Comparison does not show sometimes when researching
 * Deconstruction should show item tooltip + comparison popup
 * Deconstruction shows wrong item or none at all
 --]]
@@ -12,10 +10,20 @@ local addonName, addon, _ = 'CraftCompare', {}
 -- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink
 -- GLOBALS: unpack
 
+local function GetSetting(setting)
+	return addon.db and addon.db[setting]
+end
+local function SetSetting(setting, value)
+	if addon.db then
+		addon.db[setting] = value
+	end
+end
+
 local anchors = {
 	[2] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
 	[3] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
-	[4] = { BOTTOM, TOP, 0, -80 },
+	[4] = { BOTTOMRIGHT, TOPLEFT, -190+4, -80 },
+	-- [4] = { BOTTOM, TOP, 0, -80 },
 }
 local function ShowCraftingComparisons(owner, slot, otherSlot)
 	owner = owner or addon.object
@@ -51,49 +59,41 @@ local function ShowCraftingComparisons(owner, slot, otherSlot)
 	end
 end
 
-local object
-local function UpdateCraftingComparison(obj)
-	-- store object for later access
-	if not object and obj then object = obj.owner; addon.object = object end
-	if not object then return end
+local function UpdateCraftingComparison()
+	if not addon.object then return end
+
+	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
+	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
+	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then return end
 
 	-- create item link to get slot info
 	local itemLink
-	if object.mode == 2 and addon.db.create then
+	if addon.object.mode == 2 and addon.db.create then
 		-- create items
-		local patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = object.creationPanel:GetAllCraftingParameters()
+		local patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = addon.object.creationPanel:GetAllCraftingParameters()
 		-- for some obscure reason, API tries using too few mats sometimes
 		while (not itemLink or itemLink == '') and materialQuantity <= 100 do
 			itemLink = GetSmithingPatternResultLink(patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, LINK_STYLE_DEFAULT)
 			materialQuantity = materialQuantity + 1
 		end
-	elseif object.mode == 3 and addon.db.improve then
+	elseif addon.object.mode == 3 and addon.db.improve then
 		-- improve items
-		local bag, slot, quantity = object.improvementPanel:GetCurrentImprovementParams()
+		local bag, slot, quantity = addon.object.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
-	elseif object.mode == 4 and addon.db.extract and object.deconstructionPanel:HasSelections()then
+	elseif addon.object.mode == 4 and addon.db.extract and addon.object.deconstructionPanel:HasSelections()then
 		-- extract items / deconstruction
-		local itemSlot = object.deconstructionPanel.extractionSlot
+		local itemSlot = addon.object.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
 	end
 
 	-- show comparison
 	local slot, otherSlot = GetComparisonEquipSlotsFromItemLink(itemLink or '')
-	ShowCraftingComparisons(object, slot, otherSlot)
+	ShowCraftingComparisons(addon.object, slot, otherSlot)
 end
 
 -- ========================================================
 --  UI / Saved Vars management
 -- ========================================================
-local function GetSetting(setting)
-	return addon.db and addon.db[setting]
-end
-local function SetSetting(setting, value)
-	if addon.db then
-		addon.db[setting] = value
-	end
-end
-
 local function Initialize(eventCode, arg1, ...)
 	if arg1 ~= addonName then return end
 
@@ -108,18 +108,15 @@ local function Initialize(eventCode, arg1, ...)
 
 	-- hooks
 	-- ----------------------------------------------------
-	ZO_PreHook(ZO_SmithingCreation, 'OnSelectedPatternChanged', UpdateCraftingComparison)
+	ZO_PreHook(ZO_SmithingCreation,    'OnSelectedPatternChanged', UpdateCraftingComparison)
 	ZO_PreHook(ZO_SmithingImprovement, 'OnSlotChanged', UpdateCraftingComparison)
+	ZO_PreHook(ZO_SmithingExtraction,  'OnSlotChanged', UpdateCraftingComparison)
 
-	if GetSetting('tooltipStyle') == 'PopupTooltip' then
-		ZO_PreHook(ZO_SmithingExtraction, 'OnSlotChanged', UpdateCraftingComparison)
-	elseif GetSetting('tooltipStyle') == 'ComparativeTooltip' then
+	if GetSetting('tooltipStyle') == 'ComparativeTooltip' then
 		local orig = ItemTooltip.SetBagItem
 		ItemTooltip.SetBagItem = function(self, bag, slot)
 			orig(self, bag, slot)
 
-			--if IsShiftKeyDown() then
-			--	self:ShowComparativeTooltips()
 			if not ZO_SmithingTopLevel:IsHidden() and addon.object and (
 				(addon.object.mode == 4 and GetSetting('extract')) or
 				(addon.object.mode == 5 and GetSetting('research')) ) then
@@ -132,6 +129,8 @@ local function Initialize(eventCode, arg1, ...)
 	local orig = ZO_Smithing.SetMode
 	ZO_Smithing.SetMode = function(...)
 		orig(...)
+
+		if not addon.object then addon.object = ... end
 		UpdateCraftingComparison()
 	end
 
