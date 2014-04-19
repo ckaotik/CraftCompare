@@ -61,13 +61,12 @@ end
 
 local function UpdateCraftingComparison()
 	if not addon.object then return end
+	PopupTooltip:HideComparativeTooltips()
+	PopupTooltip:SetHidden(true)
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
-	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then
-		PopupTooltip:SetHidden(true)
-		return
-	end
+	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then return end
 
 	-- create item link to get slot info
 	local itemLink
