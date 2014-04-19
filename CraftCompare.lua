@@ -25,22 +25,18 @@ local anchors = {
 	[4] = { BOTTOMRIGHT, TOPLEFT, -190+4, -80 },
 	-- [4] = { BOTTOM, TOP, 0, -80 },
 }
-local function ShowCraftingComparisons(owner, slot, otherSlot)
-	owner = owner or addon.object
-	local tooltip = PopupTooltip
-	      tooltip:SetHidden(true)
-	local otherTooltip = ComparativeTooltip1
-	      otherTooltip:SetHidden(true)
-
+local function ShowCraftingComparisons(slot, otherSlot)
+	if not addon.object then return end
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
-	if not itemLink or itemLink == '' or not owner then return end
+	if not itemLink or itemLink == '' then return end
 
 	-- positioning
-	tooltip:ClearAnchors()
-	local from, to, dx, dy = unpack(anchors[owner.mode] or {})
-	local anchor = owner.mode == 2 and owner.creationPanel.resultTooltip
-		or owner.mode == 3 and owner.improvementPanel.resultTooltip
-		or owner.mode == 4 and owner.deconstructionPanel.extractionSlot.control
+	local tooltip = PopupTooltip
+	      tooltip:ClearAnchors()
+	local from, to, dx, dy = unpack(anchors[addon.object.mode] or {})
+	local anchor = addon.object.mode == 2 and addon.object.creationPanel.resultTooltip
+		or addon.object.mode == 3 and addon.object.improvementPanel.resultTooltip
+		or addon.object.mode == 4 and addon.object.deconstructionPanel.extractionSlot.control
 	tooltip:SetAnchor(from, anchor, to, dx, dy)
 
 	-- fill tooltip
@@ -50,6 +46,7 @@ local function ShowCraftingComparisons(owner, slot, otherSlot)
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
+		local otherTooltip = ComparativeTooltip1
 		otherTooltip:ClearAnchors()
 		otherTooltip:SetAnchor(BOTTOMLEFT, tooltip, TOPLEFT, 0, -20)
 
@@ -90,7 +87,7 @@ local function UpdateCraftingComparison()
 
 	-- show comparison
 	local slot, otherSlot = GetComparisonEquipSlotsFromItemLink(itemLink or '')
-	ShowCraftingComparisons(addon.object, slot, otherSlot)
+	ShowCraftingComparisons(slot, otherSlot)
 end
 
 -- ========================================================
