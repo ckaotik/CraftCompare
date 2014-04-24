@@ -3,7 +3,6 @@ local addonName, addon, _ = 'CraftCompare', {}
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
 * fix ComparativeTooltip1 hiding when hovering things while crafting
-* fix ComparativeTooltip1 still showing when PopupTooltip is closed
 --]]
 
 -- GLOBALS: _G, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
@@ -11,6 +10,9 @@ local addonName, addon, _ = 'CraftCompare', {}
 -- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink
 -- GLOBALS: unpack
 
+-- ========================================================
+--  Settings
+-- ========================================================
 local function GetSetting(setting)
 	return addon.db and addon.db[setting]
 end
@@ -20,6 +22,38 @@ local function SetSetting(setting, value)
 	end
 end
 
+local function CreateSettings()
+	local LAM = LibStub:GetLibrary('LibAddonMenu-1.0')
+	local panel = LAM:CreateControlPanel(addonName..'Settings', addonName)
+
+	-- modes to display tooltips for
+	LAM:AddHeader(panel, addonName..'HeaderModes', 'Compare in crafting mode')
+	LAM:AddCheckbox(panel, addonName..'ToggleCreate',
+		'Creation', 'Enable item comparison when in "Creation" mode',
+		function() return GetSetting('create') end, function(value) SetSetting('create', value) end)
+	LAM:AddCheckbox(panel, addonName..'ToggleImprove',
+		'Improvement', 'Enable item comparison when in "Improvement" mode',
+		function() return GetSetting('improve') end, function(value) SetSetting('improve', value) end)
+	LAM:AddCheckbox(panel, addonName..'ToggleExtract',
+		'Extraction', 'Enable item comparison when in "Extraction" mode',
+		function() return GetSetting('extract') end, function(value) SetSetting('extract', value) end)
+	LAM:AddCheckbox(panel, addonName..'ToggleResearch',
+		'Research', 'Enable item comparison when in "Research" mode',
+		function() return GetSetting('research') end, function(value) SetSetting('research', value) end)
+
+	-- tooltip mode
+	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
+	LAM:AddDropdown(panel, addonName..'DropdownTTStyle',
+		'Extraction / Research', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
+		{'PopupTooltip', 'ComparativeTooltip'},
+		function(...) return GetSetting('tooltipStyle') end, function(value) SetSetting('tooltipStyle', value) end,
+		true, 'Requires UI reload')
+	LAM:AddDescription(panel, addonName..'Description', 'You may change the way item comparisons are presented to you.\nPopupTooltip does not yet support "Research" mode.', nil)
+end
+
+-- ========================================================
+--  Functionality
+-- ========================================================
 local anchors = {
 	[2] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
 	[3] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
@@ -98,7 +132,7 @@ local function UpdateCraftingComparison()
 end
 
 -- ========================================================
---  UI / Saved Vars management
+--  Setup
 -- ========================================================
 local function Initialize(eventCode, arg1, ...)
 	if arg1 ~= addonName then return end
@@ -158,34 +192,7 @@ local function Initialize(eventCode, arg1, ...)
 		UpdateCraftingComparison()
 	end
 
-	-- settings menu
-	-- ----------------------------------------------------
-	local LAM = LibStub('LibAddonMenu-1.0')
-	local panelID = LAM:CreateControlPanel(addonName, addonName)
-
-	-- modes to display tooltips for
-	LAM:AddHeader(panelID, addonName..'HeaderModes', 'Compare in modes')
-	LAM:AddCheckbox(panelID, addonName..'ToggleCreate',
-		'Creation', 'Enable item comparison when in "Creation" mode',
-		function() return GetSetting('create') end, function(value) SetSetting('create', value) end)
-	LAM:AddCheckbox(panelID, addonName..'ToggleImprove',
-		'Improvement', 'Enable item comparison when in "Improvement" mode',
-		function() return GetSetting('improve') end, function(value) SetSetting('improve', value) end)
-	LAM:AddCheckbox(panelID, addonName..'ToggleExtract',
-		'Extraction', 'Enable item comparison when in "Extraction" mode',
-		function() return GetSetting('extract') end, function(value) SetSetting('extract', value) end)
-	LAM:AddCheckbox(panelID, addonName..'ToggleResearch',
-		'Research', 'Enable item comparison when in "Research" mode',
-		function() return GetSetting('research') end, function(value) SetSetting('research', value) end)
-
-	-- tooltip mode
-	LAM:AddHeader(panelID, addonName..'HeaderTTStyle', 'Tooltip Style')
-	LAM:AddDropdown(panelID, addonName..'DropdownTTStyle',
-		'Extraction / Research', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
-		{'PopupTooltip', 'ComparativeTooltip'},
-		function(...) return GetSetting('tooltipStyle') end, function(value) SetSetting('tooltipStyle', value) end,
-		true, 'Requires UI reload')
-	LAM:AddDescription(panelID, addonName..'Description', 'You may change the way item comparisons are presented to you.\nPopupTooltip does not yet support "Research" mode.', nil)
+	CreateSettings()
 end
 
 local em = GetEventManager()
