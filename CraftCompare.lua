@@ -5,7 +5,7 @@ local addonName, addon, _ = 'CraftCompare', {}
 * fix ComparativeTooltip1 hiding when hovering things while crafting
 --]]
 
--- GLOBALS: _G, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
+-- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
 -- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_Smithing, ZO_SmithingTopLevel, ZO_SmithingCreation, ZO_SmithingImprovement, ZO_SmithingExtraction
 -- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink
 -- GLOBALS: unpack
@@ -62,15 +62,15 @@ local anchors = {
 }
 local function ShowCraftingComparisons(slot, otherSlot)
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
-	if not addon.object or not itemLink or itemLink == '' then return end
+	if not SMITHING.mode or not itemLink or itemLink == '' then return end
 
 	-- positioning
 	local tooltip = PopupTooltip
 	tooltip:ClearAnchors()
-	local from, to, dx, dy = unpack(anchors[addon.object.mode] or {})
-	local anchor = addon.object.mode == 2 and addon.object.creationPanel.resultTooltip
-		or addon.object.mode == 3 and addon.object.improvementPanel.resultTooltip
-		or addon.object.mode == 4 and addon.object.deconstructionPanel.extractionSlot.control
+	local from, to, dx, dy = unpack(anchors[SMITHING.mode or 1] or {})
+	local anchor = SMITHING.mode == 2 and SMITHING.creationPanel.resultTooltip
+		or SMITHING.mode == 3 and SMITHING.improvementPanel.resultTooltip
+		or SMITHING.mode == 4 and SMITHING.deconstructionPanel.extractionSlot.control
 	tooltip:SetAnchor(from, anchor, to, dx, dy)
 
 	-- fill tooltip
@@ -95,34 +95,34 @@ local function ShowCraftingComparisons(slot, otherSlot)
 end
 
 local function UpdateCraftingComparison()
-	if not addon.object then return end
+	if not SMITHING then return end
 	PopupTooltip:HideComparativeTooltips()
 	PopupTooltip:SetHidden(true)
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
-	if isComparative and (addon.object.mode == 4 or addon.object.mode == 5) then
+	if isComparative and (SMITHING.mode == 4 or SMITHING.mode == 5) then
 		ItemTooltip:ShowComparativeTooltips()
 		return
 	end
 
 	-- create item link to get slot info
 	local itemLink
-	if addon.object.mode == 2 and addon.db.create then
+	if SMITHING.mode == 2 and addon.db.create then
 		-- create items
-		local patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = addon.object.creationPanel:GetAllCraftingParameters()
+		local patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = SMITHING.creationPanel:GetAllCraftingParameters()
 		-- for some obscure reason, API tries using too few mats sometimes
 		while (not itemLink or itemLink == '') and materialQuantity <= 100 do
 			itemLink = GetSmithingPatternResultLink(patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, LINK_STYLE_DEFAULT)
 			materialQuantity = materialQuantity + 1
 		end
-	elseif addon.object.mode == 3 and addon.db.improve then
+	elseif SMITHING.mode == 3 and addon.db.improve then
 		-- improve items
-		local bag, slot, quantity = addon.object.improvementPanel:GetCurrentImprovementParams()
+		local bag, slot, quantity = SMITHING.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
-	elseif addon.object.mode == 4 and addon.db.extract and addon.object.deconstructionPanel:HasSelections() then
+	elseif SMITHING.mode == 4 and addon.db.extract and SMITHING.deconstructionPanel:HasSelections() then
 		-- extract items / deconstruction
-		local itemSlot = addon.object.deconstructionPanel.extractionSlot
+		local itemSlot = SMITHING.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
 	end
 
@@ -168,9 +168,9 @@ local function Initialize(eventCode, arg1, ...)
 		ItemTooltip.SetBagItem = function(self, bag, slot)
 			orig(self, bag, slot)
 
-			if not ZO_SmithingTopLevel:IsHidden() and addon.object and (
-				(addon.object.mode == 4 and GetSetting('extract')) or
-				(addon.object.mode == 5 and GetSetting('research')) ) then
+			if not ZO_SmithingTopLevel:IsHidden() and SMITHING and (
+				(SMITHING.mode == 4 and GetSetting('extract')) or
+				(SMITHING.mode == 5 and GetSetting('research')) ) then
 				-- we want to show comparative tooltips
 				self:ShowComparativeTooltips()
 				for i = 1, 2 do
@@ -187,8 +187,6 @@ local function Initialize(eventCode, arg1, ...)
 	local orig = ZO_Smithing.SetMode
 	ZO_Smithing.SetMode = function(...)
 		orig(...)
-
-		if not addon.object then addon.object = ... end
 		UpdateCraftingComparison()
 	end
 
