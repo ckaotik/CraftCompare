@@ -5,7 +5,6 @@ addon.name = addonName
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
 * fix ComparativeTooltip1 hiding when hovering things while crafting
-* fix SMITHING_MODE_RESEARCH guessing itemlink when no such item is equipped
 --]]
 
 -- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
@@ -85,23 +84,13 @@ local function GetValidSmithingItemLink(patternIndex)
 	end
 end
 
-local anchors = {
-	[SMITHING_MODE_CREATE]      = { BOTTOMRIGHT, SMITHING.creationPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
-	[SMITHING_MODE_IMPROVE]     = { BOTTOMRIGHT, SMITHING.improvementPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
-	[SMITHING_MODE_DECONSTRUCT] = { BOTTOMRIGHT, SMITHING.deconstructionPanel.extractionSlot.control, TOPLEFT, -190+4, -80 },
-	[SMITHING_MODE_RESEARCH]    = { BOTTOMRIGHT, GuiRoot, CENTER, -240, 257 },
-}
 local function ShowCraftingComparisons(slot, otherSlot)
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
 	local mode = SMITHING.mode
 	if not mode or not itemLink or itemLink == '' then return end
 
-	-- positioning
-	local tooltip = PopupTooltip
-	tooltip:ClearAnchors()
-	tooltip:SetAnchor(unpack(anchors[mode or 1] or {}))
-
 	-- fill tooltip
+	local tooltip = PopupTooltip
 	tooltip:ClearLines()
 	tooltip:SetBagItem(BAG_WORN, slot)
 	tooltip:SetHidden(false)
@@ -122,17 +111,27 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	end
 end
 
-local function UpdateCraftingComparison(self, mode)
-	local mode = mode or SMITHING.mode
-	if not GetSetting('compareMode'..mode) then return end
-
+local anchors = {
+	[SMITHING_MODE_CREATE]      = { BOTTOMRIGHT, SMITHING.creationPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_IMPROVE]     = { BOTTOMRIGHT, SMITHING.improvementPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_DECONSTRUCT] = { BOTTOMRIGHT, SMITHING.deconstructionPanel.extractionSlot.control, TOPLEFT, -190+4, -80 },
+	[SMITHING_MODE_RESEARCH]    = { BOTTOMRIGHT, GuiRoot, CENTER, -240, 257 },
+}
+local function UpdateCraftingComparison(self, setMode)
 	PopupTooltip:HideComparativeTooltips()
 	PopupTooltip:SetHidden(true)
+
+	local mode = type(setMode) == 'number' and setMode or SMITHING.mode
+	if not mode or not GetSetting('compareMode'..mode) then return end
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
 		ItemTooltip:ShowComparativeTooltips()
 		return
+	else
+		local tooltip = PopupTooltip
+		tooltip:ClearAnchors()
+		tooltip:SetAnchor(unpack(anchors[mode or 1] or {}))
 	end
 
 	-- create item link to get slot info
@@ -145,13 +144,15 @@ local function UpdateCraftingComparison(self, mode)
 		local bag, slot, quantity = SMITHING.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
 	elseif mode == SMITHING_MODE_DECONSTRUCT and SMITHING.deconstructionPanel:HasSelections() then
-		-- deconstruct items
+		-- deconstruct items; only when item is already selected
 		local itemSlot = SMITHING.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
-	elseif mode == SMITHING_MODE_RESEARCH then
-		-- research traits
+	elseif mode == SMITHING_MODE_RESEARCH and setMode ~= SMITHING_MODE_RESEARCH then
+		-- research traits; we don't want tooltips just for switching panels
 		local data = SMITHING.researchPanel:GetSelectedData()
-		itemLink = data and GetValidSmithingItemLink(data.researchLineIndex)
+		if data and not data.areAllTraitsKnown then
+			itemLink = GetValidSmithingItemLink(data.researchLineIndex)
+		end
 	end
 
 	-- show comparison
@@ -177,6 +178,12 @@ local function Initialize(eventCode, arg1, ...)
 	-- hooks
 	-- ----------------------------------------------------
 	ZO_PreHook(SMITHING, 'SetMode', UpdateCraftingComparison)
+	--[[ local orig_SetMode = SMITHING.SetMode
+	SMITHING.SetMode = function(...)
+		orig_SetMode(...)
+		UpdateCraftingComparison(...)
+	end --]]
+
 	ZO_PreHook(SMITHING, 'OnSelectedPatternChanged', UpdateCraftingComparison) -- crafting
 	ZO_PreHook(SMITHING, 'OnExtractionSlotChanged',  UpdateCraftingComparison) -- extraction / deconstruction
 	ZO_PreHook(SMITHING, 'OnImprovementSlotChanged', UpdateCraftingComparison) -- improvement
