@@ -1,4 +1,6 @@
 local addonName, addon, _ = 'CraftCompare', {}
+_G[addonName] = addon
+addon.name = addonName
 
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
@@ -37,25 +39,28 @@ local function CreateSettings()
 	LAM:AddHeader(panel, addonName..'HeaderModes', 'Compare in crafting mode')
 	LAM:AddCheckbox(panel, addonName..'ToggleCreate',
 		'Creation', 'Enable item comparison when in "Creation" mode',
-		function() return GetSetting('create') end, function(value) SetSetting('create', value) end)
+		function() return GetSetting('compareMode'..SMITHING_MODE_CREATE) end, function(value) SetSetting('compareMode'..SMITHING_MODE_CREATE, value) end)
 	LAM:AddCheckbox(panel, addonName..'ToggleImprove',
 		'Improvement', 'Enable item comparison when in "Improvement" mode',
-		function() return GetSetting('improve') end, function(value) SetSetting('improve', value) end)
+		function() return GetSetting('compareMode'..SMITHING_MODE_IMPROVE) end, function(value) SetSetting('compareMode'..SMITHING_MODE_IMPROVE, value) end)
 	LAM:AddCheckbox(panel, addonName..'ToggleDeconstruct',
 		'Deconstruction', 'Enable item comparison when in "Deconstruction" mode',
-		function() return GetSetting('deconstruct') end, function(value) SetSetting('deconstruct', value) end)
+		function() return GetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT) end, function(value) SetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT, value) end)
 	LAM:AddCheckbox(panel, addonName..'ToggleResearch',
 		'Research', 'Enable item comparison when in "Research" mode',
-		function() return GetSetting('research') end, function(value) SetSetting('research', value) end)
+		function() return GetSetting('compareMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('compareMode'..SMITHING_MODE_RESEARCH, value) end)
 
 	-- tooltip mode
 	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
-	LAM:AddDropdown(panel, addonName..'DropdownTTStyle',
-		'Deconstruct / Research', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
+	LAM:AddDropdown(panel, addonName..'TTStyleDeconstruct',
+		'Deconstruct', nil,
 		{'PopupTooltip', 'ComparativeTooltip'},
-		function(...) return GetSetting('tooltipStyle') end, function(value) SetSetting('tooltipStyle', value) end,
-		true, 'Requires UI reload')
-	LAM:AddDescription(panel, addonName..'Description', 'You may change the way item comparisons are presented to you in specific crafting modes.', nil)
+		function(...) return GetSetting('tooltipMode'..SMITHING_MODE_DECONSTRUCT) end, function(value) SetSetting('tooltipMode'..SMITHING_MODE_DECONSTRUCT, value) end)
+	LAM:AddDropdown(panel, addonName..'TTStyleResearch',
+		'Research', nil,
+		{'PopupTooltip', 'ComparativeTooltip'},
+		function(...) return GetSetting('tooltipMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('tooltipMode'..SMITHING_MODE_RESEARCH, value) end)
+	LAM:AddDescription(panel, addonName..'Description', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.', nil)
 end
 
 -- ========================================================
@@ -118,32 +123,32 @@ local function ShowCraftingComparisons(slot, otherSlot)
 end
 
 local function UpdateCraftingComparison(self, mode)
-	if not SMITHING then return end
 	local mode = mode or SMITHING.mode
+	if not GetSetting('compareMode'..mode) then return end
+
 	PopupTooltip:HideComparativeTooltips()
 	PopupTooltip:SetHidden(true)
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
-	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
-	if isComparative and (mode == SMITHING_MODE_DECONSTRUCT or mode == SMITHING_MODE_RESEARCH) then
+	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
 		ItemTooltip:ShowComparativeTooltips()
 		return
 	end
 
 	-- create item link to get slot info
 	local itemLink
-	if mode == SMITHING_MODE_CREATE and addon.db.create then
+	if mode == SMITHING_MODE_CREATE then
 		-- create items
 		itemLink = GetValidSmithingItemLink()
-	elseif mode == SMITHING_MODE_IMPROVE and addon.db.improve then
+	elseif mode == SMITHING_MODE_IMPROVE then
 		-- improve items
 		local bag, slot, quantity = SMITHING.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
-	elseif mode == SMITHING_MODE_DECONSTRUCT and addon.db.deconstruct and SMITHING.deconstructionPanel:HasSelections() then
+	elseif mode == SMITHING_MODE_DECONSTRUCT and SMITHING.deconstructionPanel:HasSelections() then
 		-- deconstruct items
 		local itemSlot = SMITHING.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
-	elseif mode == SMITHING_MODE_RESEARCH and addon.db.research then
+	elseif mode == SMITHING_MODE_RESEARCH then
 		-- research traits
 		local data = SMITHING.researchPanel:GetSelectedData()
 		itemLink = data and GetValidSmithingItemLink(data.researchLineIndex)
@@ -160,18 +165,14 @@ end
 local function Initialize(eventCode, arg1, ...)
 	if arg1 ~= addonName then return end
 
-	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 1, nil, {
-		tooltipStyle = 'PopupTooltip',
-		create = true,
-		improve = true,
-		deconstruct = false,
-		research = false,
+	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 2, nil, {
+		['tooltipMode'..SMITHING_MODE_DECONSTRUCT] = 'PopupTooltip',
+		['tooltipMode'..SMITHING_MODE_RESEARCH] = 'PopupTooltip',
+		['compareMode'..SMITHING_MODE_CREATE] = true,
+		['compareMode'..SMITHING_MODE_IMPROVE] = true,
+		['compareMode'..SMITHING_MODE_DECONSTRUCT] = true,
+		['compareMode'..SMITHING_MODE_RESEARCH] = true,
 	})
-
-	-- addon exposure
-	-- ----------------------------------------------------
-	addon.name = addonName
-	_G[addonName] = addon
 
 	-- hooks
 	-- ----------------------------------------------------
@@ -179,38 +180,34 @@ local function Initialize(eventCode, arg1, ...)
 	ZO_PreHook(SMITHING, 'OnSelectedPatternChanged', UpdateCraftingComparison) -- crafting
 	ZO_PreHook(SMITHING, 'OnExtractionSlotChanged',  UpdateCraftingComparison) -- extraction / deconstruction
 	ZO_PreHook(SMITHING, 'OnImprovementSlotChanged', UpdateCraftingComparison) -- improvement
+	ZO_PreHook(SMITHING.researchPanel, 'Research',   UpdateCraftingComparison) -- research
 
+	ZO_PreHook(ZO_ListDialog1, 'SetHidden', function(self, hidden)
+		-- hide tooltip when cancelling research
+		if hidden and not ZO_SmithingTopLevel:IsHidden() and not PopupTooltip:IsHidden() then
+			PopupTooltip:SetHidden(true)
+		end
+	end)
 	ZO_PreHook(PopupTooltip, 'SetHidden', function(self, hidden)
+		-- hide ComparativeTooltip1 when hiding PopupTooltip
 		if not ZO_SmithingTopLevel:IsHidden() and ComparativeTooltip1 then
-			-- hide ComparativeTooltip1 when hiding PopupTooltip
 			ComparativeTooltip1:SetHidden(true)
 		end
 	end)
 
-	if GetSetting('tooltipStyle') == 'PopupTooltip' then
-		ZO_PreHook(SMITHING.researchPanel, 'Research', UpdateCraftingComparison) -- research
-		ZO_PreHook(ZO_ListDialog1, 'SetHidden', function(self, hidden)
-			-- hide tooltip when cancelling research
-			if hidden and not ZO_SmithingTopLevel:IsHidden() and not PopupTooltip:IsHidden() then
-				PopupTooltip:SetHidden(true)
-			end
-		end)
-	elseif GetSetting('tooltipStyle') == 'ComparativeTooltip' then
-		local orig = ItemTooltip.SetBagItem
-		ItemTooltip.SetBagItem = function(self, bag, slot)
-			orig(self, bag, slot)
+	local orig = ItemTooltip.SetBagItem
+	ItemTooltip.SetBagItem = function(self, bag, slot)
+		orig(self, bag, slot)
 
-			if not ZO_SmithingTopLevel:IsHidden() and SMITHING and (
-				(SMITHING.mode == SMITHING_MODE_DECONSTRUCT and GetSetting('deconstruct')) or
-				(SMITHING.mode == SMITHING_MODE_RESEARCH and GetSetting('research')) ) then
-				-- we want to show comparative tooltips
-				self:ShowComparativeTooltips()
-				for i = 1, 2 do
-					local tooltip = _G['ComparativeTooltip'..i]
-					if not tooltip:IsHidden() and tooltip.showAnimation then
-						tooltip.showAnimation:PlayFromStart()
-					end
-				end
+		if ZO_SmithingTopLevel:IsHidden() or not GetSetting('compareMode'..SMITHING.mode)
+			or GetSetting('tooltipMode'..SMITHING.mode) ~= 'ComparativeTooltip' then return end
+
+		-- we want to show comparative tooltips
+		self:ShowComparativeTooltips()
+		for i = 1, 2 do
+			local tooltip = _G['ComparativeTooltip'..i]
+			if not tooltip:IsHidden() and tooltip.showAnimation then
+				tooltip.showAnimation:PlayFromStart()
 			end
 		end
 	end
