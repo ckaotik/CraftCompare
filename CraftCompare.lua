@@ -3,12 +3,19 @@ local addonName, addon, _ = 'CraftCompare', {}
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
 * fix ComparativeTooltip1 hiding when hovering things while crafting
+* fix SMITHING_MODE_RESEARCH guessing itemlink when no such item is equipped
 --]]
 
 -- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
--- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_Smithing, ZO_SmithingTopLevel, ZO_SmithingCreation, ZO_SmithingImprovement, ZO_SmithingExtraction
+-- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel
 -- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink
 -- GLOBALS: unpack
+
+local SMITHING_MODE_EXTRACT = 1
+local SMITHING_MODE_CREATE = 2
+local SMITHING_MODE_IMPROVE = 3
+local SMITHING_MODE_DECONSTRUCT = 4
+local SMITHING_MODE_RESEARCH = 5
 
 -- ========================================================
 --  Settings
@@ -34,9 +41,9 @@ local function CreateSettings()
 	LAM:AddCheckbox(panel, addonName..'ToggleImprove',
 		'Improvement', 'Enable item comparison when in "Improvement" mode',
 		function() return GetSetting('improve') end, function(value) SetSetting('improve', value) end)
-	LAM:AddCheckbox(panel, addonName..'ToggleExtract',
-		'Extraction', 'Enable item comparison when in "Extraction" mode',
-		function() return GetSetting('extract') end, function(value) SetSetting('extract', value) end)
+	LAM:AddCheckbox(panel, addonName..'ToggleDeconstruct',
+		'Deconstruction', 'Enable item comparison when in "Deconstruction" mode',
+		function() return GetSetting('deconstruct') end, function(value) SetSetting('deconstruct', value) end)
 	LAM:AddCheckbox(panel, addonName..'ToggleResearch',
 		'Research', 'Enable item comparison when in "Research" mode',
 		function() return GetSetting('research') end, function(value) SetSetting('research', value) end)
@@ -44,34 +51,50 @@ local function CreateSettings()
 	-- tooltip mode
 	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
 	LAM:AddDropdown(panel, addonName..'DropdownTTStyle',
-		'Extraction / Research', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
+		'Deconstruct / Research', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
 		{'PopupTooltip', 'ComparativeTooltip'},
 		function(...) return GetSetting('tooltipStyle') end, function(value) SetSetting('tooltipStyle', value) end,
 		true, 'Requires UI reload')
-	LAM:AddDescription(panel, addonName..'Description', 'You may change the way item comparisons are presented to you.\nPopupTooltip does not yet support "Research" mode.', nil)
+	LAM:AddDescription(panel, addonName..'Description', 'You may change the way item comparisons are presented to you in specific crafting modes.', nil)
 end
 
 -- ========================================================
 --  Functionality
 -- ========================================================
+local function GetValidSmithingItemLink(patternIndex)
+	local materialIndex, styleIndex, traitIndex = 1, 1, 1
+	local materialQuantity = 1
+	if not patternIndex then
+		-- this is a crafting process
+		patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = SMITHING.creationPanel:GetAllCraftingParameters()
+	end
+
+	-- for some obscure reason, API tries using too few mats sometimes
+	while materialQuantity <= 100 do
+		-- assumption: crafting and research share the same indices for the same slots
+		local itemLink = GetSmithingPatternResultLink(patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, LINK_STYLE_DEFAULT)
+		materialQuantity = materialQuantity + 1
+		if itemLink and itemLink ~= '' then
+			return itemLink
+		end
+	end
+end
+
 local anchors = {
-	[2] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
-	[3] = { BOTTOMRIGHT, BOTTOMLEFT, -10, 0 },
-	[4] = { BOTTOMRIGHT, TOPLEFT, -190+4, -80 },
-	-- [4] = { BOTTOM, TOP, 0, -80 },
+	[SMITHING_MODE_CREATE]      = { BOTTOMRIGHT, SMITHING.creationPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_IMPROVE]     = { BOTTOMRIGHT, SMITHING.improvementPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_DECONSTRUCT] = { BOTTOMRIGHT, SMITHING.deconstructionPanel.extractionSlot.control, TOPLEFT, -190+4, -80 },
+	[SMITHING_MODE_RESEARCH]    = { BOTTOMRIGHT, GuiRoot, CENTER, -240, 257 },
 }
 local function ShowCraftingComparisons(slot, otherSlot)
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
-	if not SMITHING.mode or not itemLink or itemLink == '' then return end
+	local mode = SMITHING.mode
+	if not mode or not itemLink or itemLink == '' then return end
 
 	-- positioning
 	local tooltip = PopupTooltip
 	tooltip:ClearAnchors()
-	local from, to, dx, dy = unpack(anchors[SMITHING.mode or 1] or {})
-	local anchor = SMITHING.mode == 2 and SMITHING.creationPanel.resultTooltip
-		or SMITHING.mode == 3 and SMITHING.improvementPanel.resultTooltip
-		or SMITHING.mode == 4 and SMITHING.deconstructionPanel.extractionSlot.control
-	tooltip:SetAnchor(from, anchor, to, dx, dy)
+	tooltip:SetAnchor(unpack(anchors[mode or 1] or {}))
 
 	-- fill tooltip
 	tooltip:ClearLines()
@@ -94,36 +117,36 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	end
 end
 
-local function UpdateCraftingComparison()
+local function UpdateCraftingComparison(self, mode)
 	if not SMITHING then return end
+	local mode = mode or SMITHING.mode
 	PopupTooltip:HideComparativeTooltips()
 	PopupTooltip:SetHidden(true)
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	local isComparative = GetSetting('tooltipStyle') == 'ComparativeTooltip'
-	if isComparative and (SMITHING.mode == 4 or SMITHING.mode == 5) then
+	if isComparative and (mode == SMITHING_MODE_DECONSTRUCT or mode == SMITHING_MODE_RESEARCH) then
 		ItemTooltip:ShowComparativeTooltips()
 		return
 	end
 
 	-- create item link to get slot info
 	local itemLink
-	if SMITHING.mode == 2 and addon.db.create then
+	if mode == SMITHING_MODE_CREATE and addon.db.create then
 		-- create items
-		local patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex = SMITHING.creationPanel:GetAllCraftingParameters()
-		-- for some obscure reason, API tries using too few mats sometimes
-		while (not itemLink or itemLink == '') and materialQuantity <= 100 do
-			itemLink = GetSmithingPatternResultLink(patternIndex, materialIndex, materialQuantity, styleIndex, traitIndex, LINK_STYLE_DEFAULT)
-			materialQuantity = materialQuantity + 1
-		end
-	elseif SMITHING.mode == 3 and addon.db.improve then
+		itemLink = GetValidSmithingItemLink()
+	elseif mode == SMITHING_MODE_IMPROVE and addon.db.improve then
 		-- improve items
 		local bag, slot, quantity = SMITHING.improvementPanel:GetCurrentImprovementParams()
 		itemLink = GetSmithingImprovedItemLink(bag, slot, quantity)
-	elseif SMITHING.mode == 4 and addon.db.extract and SMITHING.deconstructionPanel:HasSelections() then
-		-- extract items / deconstruction
+	elseif mode == SMITHING_MODE_DECONSTRUCT and addon.db.deconstruct and SMITHING.deconstructionPanel:HasSelections() then
+		-- deconstruct items
 		local itemSlot = SMITHING.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
+	elseif mode == SMITHING_MODE_RESEARCH and addon.db.research then
+		-- research traits
+		local data = SMITHING.researchPanel:GetSelectedData()
+		itemLink = data and GetValidSmithingItemLink(data.researchLineIndex)
 	end
 
 	-- show comparison
@@ -141,7 +164,7 @@ local function Initialize(eventCode, arg1, ...)
 		tooltipStyle = 'PopupTooltip',
 		create = true,
 		improve = true,
-		extract = false,
+		deconstruct = false,
 		research = false,
 	})
 
@@ -152,9 +175,10 @@ local function Initialize(eventCode, arg1, ...)
 
 	-- hooks
 	-- ----------------------------------------------------
-	ZO_PreHook(ZO_SmithingCreation, 'OnSelectedPatternChanged', UpdateCraftingComparison)
-	ZO_PreHook(ZO_SmithingImprovement, 'OnSlotChanged', UpdateCraftingComparison)
-	ZO_PreHook(ZO_SmithingExtraction,  'OnSlotChanged', UpdateCraftingComparison)
+	ZO_PreHook(SMITHING, 'SetMode', UpdateCraftingComparison)
+	ZO_PreHook(SMITHING, 'OnSelectedPatternChanged', UpdateCraftingComparison) -- crafting
+	ZO_PreHook(SMITHING, 'OnExtractionSlotChanged',  UpdateCraftingComparison) -- extraction / deconstruction
+	ZO_PreHook(SMITHING, 'OnImprovementSlotChanged', UpdateCraftingComparison) -- improvement
 
 	ZO_PreHook(PopupTooltip, 'SetHidden', function(self, hidden)
 		if not ZO_SmithingTopLevel:IsHidden() and ComparativeTooltip1 then
@@ -163,14 +187,22 @@ local function Initialize(eventCode, arg1, ...)
 		end
 	end)
 
-	if GetSetting('tooltipStyle') == 'ComparativeTooltip' then
+	if GetSetting('tooltipStyle') == 'PopupTooltip' then
+		ZO_PreHook(SMITHING.researchPanel, 'Research', UpdateCraftingComparison) -- research
+		ZO_PreHook(ZO_ListDialog1, 'SetHidden', function(self, hidden)
+			-- hide tooltip when cancelling research
+			if hidden and not ZO_SmithingTopLevel:IsHidden() and not PopupTooltip:IsHidden() then
+				PopupTooltip:SetHidden(true)
+			end
+		end)
+	elseif GetSetting('tooltipStyle') == 'ComparativeTooltip' then
 		local orig = ItemTooltip.SetBagItem
 		ItemTooltip.SetBagItem = function(self, bag, slot)
 			orig(self, bag, slot)
 
 			if not ZO_SmithingTopLevel:IsHidden() and SMITHING and (
-				(SMITHING.mode == 4 and GetSetting('extract')) or
-				(SMITHING.mode == 5 and GetSetting('research')) ) then
+				(SMITHING.mode == SMITHING_MODE_DECONSTRUCT and GetSetting('deconstruct')) or
+				(SMITHING.mode == SMITHING_MODE_RESEARCH and GetSetting('research')) ) then
 				-- we want to show comparative tooltips
 				self:ShowComparativeTooltips()
 				for i = 1, 2 do
@@ -181,13 +213,6 @@ local function Initialize(eventCode, arg1, ...)
 				end
 			end
 		end
-	end
-
-	-- show/hide tooltip when changing crafting modes
-	local orig = ZO_Smithing.SetMode
-	ZO_Smithing.SetMode = function(...)
-		orig(...)
-		UpdateCraftingComparison()
 	end
 
 	CreateSettings()
