@@ -97,12 +97,12 @@ local function ShowCraftingComparisons(slot, otherSlot)
 
 	local font = 'ZoFontWinT2'
 	local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
-	local equipped = '('..GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)..')'
+	-- local equipped = '('..GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)..')'
 
 	-- show style in tooltip
 	local _, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
 	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
-	tooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+	-- tooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
@@ -115,7 +115,7 @@ local function ShowCraftingComparisons(slot, otherSlot)
 		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
 		otherTooltip.icon:SetTexture(icon)
 		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
-		otherTooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+		-- otherTooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
 
 		-- move tooltips so secondary (bottom one) aligns properly
 		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
@@ -136,7 +136,7 @@ local function UpdateCraftingComparison(self, setMode)
 	addon.resultTooltip:SetHidden(true)
 
 	local mode = type(setMode) == 'number' and setMode or SMITHING.mode
-	if not mode or not GetSetting('compareMode'..mode) then return end
+	if not mode or not GetSetting('compareMode'..mode) or ZO_SmithingTopLevel:IsHidden() then return end
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
@@ -170,7 +170,7 @@ local function UpdateCraftingComparison(self, setMode)
 
 			local icon, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
 			tooltip.icon:SetTexture(icon)
-			tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+			-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
 		end
 	elseif mode == SMITHING_MODE_RESEARCH and setMode ~= SMITHING_MODE_RESEARCH then
 		-- research traits; we don't want tooltips just for switching panels
