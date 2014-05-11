@@ -7,9 +7,9 @@ addon.name = addonName
 * fix ComparativeTooltip1 hiding when hovering things while crafting
 --]]
 
--- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, TOP, BOTTOM
+-- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, CT_TEXTURE
 -- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ItemTooltipTopLevel, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel, ZO_ListDialog1
--- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager
+-- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager, GetString, GetItemLinkInfo, GetInterfaceColor
 -- GLOBALS: unpack, type
 
 local SMITHING_MODE_EXTRACT = 1
@@ -17,44 +17,6 @@ local SMITHING_MODE_CREATE = 2
 local SMITHING_MODE_IMPROVE = 3
 local SMITHING_MODE_DECONSTRUCT = 4
 local SMITHING_MODE_RESEARCH = 5
-
-local styleNames = {
-	[ITEMSTYLE_NONE] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_ARGONIAN] = GetString(SI_ITEMSTYLE6),
-	[ITEMSTYLE_RACIAL_BRETON] = GetString(SI_ITEMSTYLE1),
-	[ITEMSTYLE_RACIAL_DARK_ELF] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_HIGH_ELF] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_KHAJIIT] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_NORD] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_ORC] = GetString(SI_ITEMSTYLE3),
-	[ITEMSTYLE_RACIAL_REDGUARD] = GetString(SI_ITEMSTYLE0),
-	[ITEMSTYLE_RACIAL_WOOD_ELF] = GetString(SI_ITEMSTYLE0),
-}
-
---[[
-[423] = "Keiner"
-[424] = "Bretonisch"
-[425] = "Rothwardonisch"
-[426] = "Orkisch"
-[427] = "Dunmerisch"
-[428] = "Nordisch"
-[429] = "Argonisch"
-[430] = "Altmerisch"
-[431] = "Bosmerisch"
-[432] = "Khajiitisch"
-[437] = "Dwemerisch"
-[438] = "Altelfisch"
-[439] = "Kaiserlich"
-[440] = "Barbarisch"
-[441] = "Banditisch"
-[442] = "Urtümlich"
-[443] = "Daedrisch"
-[454] = "Draugrisch"
-[455] = "Maormerisch"
-[456] = "Akavirisch"
-[457] = "Kaiserlich"
-[458] = "Yokudanisch"
---]]
 
 -- ========================================================
 --  Settings
@@ -135,7 +97,7 @@ local function ShowCraftingComparisons(slot, otherSlot)
 
 	-- show style in tooltip
 	local _, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
-	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
@@ -147,17 +109,12 @@ local function ShowCraftingComparisons(slot, otherSlot)
 		-- show style in tooltip & update icon
 		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
 		otherTooltip.icon:SetTexture(icon)
-		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
 
 		-- move tooltips so secondary (bottom one) aligns properly
 		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
 		tooltip:ClearAnchors()
 		tooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY - otherTooltip:GetHeight() - 10)
-
-		-- otherTooltip:ClearAnchors()
-		-- otherTooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY)
-		-- tooltip:ClearAnchors()
-		-- tooltip:SetAnchor(BOTTOM, otherTooltip, TOP, 0, -10)
 	end
 end
 
@@ -235,7 +192,7 @@ local function Initialize(eventCode, arg1, ...)
 	local wm = GetWindowManager()
 	local compareTooltip = wm:CreateControlFromVirtual(addonName..'Tooltip', ItemTooltipTopLevel, 'ItemTooltipBase')
 	compareTooltip:ClearAnchors()
-	compareTooltip:SetAnchor(TOP, PopupTooltip, BOTTOM, 0, 10)
+	compareTooltip:SetAnchor(_G.TOP, PopupTooltip, _G.BOTTOM, 0, 10)
 	compareTooltip:SetHidden(true)
 	compareTooltip:SetClampedToScreen(true)
 	compareTooltip:SetMouseEnabled(true)
@@ -248,13 +205,13 @@ local function Initialize(eventCode, arg1, ...)
 	local icon = wm:CreateControl(addonName..'TooltipIcon', compareTooltip, CT_TEXTURE)
 	icon:SetWidth(64)
 	icon:SetHeight(64)
-    icon:SetAnchor(CENTER, compareTooltip, TOP, 0, 20)
+    icon:SetAnchor(_G.CENTER, compareTooltip, _G.TOP, 0, 20)
     icon:SetHidden(false)
     compareTooltip.icon = icon
 
 	local resultTooltip = wm:CreateControlFromVirtual(addonName..'DeconstructTooltip', ZO_SmithingTopLevel, 'ItemTooltipBase')
 	resultTooltip:ClearAnchors()
-	resultTooltip:SetAnchor(BOTTOM, SMITHING.deconstructionPanel.extractionSlot.control, TOP, 0, -80)
+	resultTooltip:SetAnchor(_G.BOTTOM, SMITHING.deconstructionPanel.extractionSlot.control, _G.TOP, 0, -80)
 	resultTooltip:SetHidden(true)
 	resultTooltip:SetClampedToScreen(true)
 	resultTooltip:SetMouseEnabled(true)
@@ -275,7 +232,9 @@ local function Initialize(eventCode, arg1, ...)
 		end
 	end)
 	ZO_PreHook(PopupTooltip, 'SetHidden', function(self, hidden)
-		addon.tooltip:SetHidden(true)
+		if hidden then
+			addon.tooltip:SetHidden(true)
+		end
 	end)
 
 	local orig = ItemTooltip.SetBagItem
