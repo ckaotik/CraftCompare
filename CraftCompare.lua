@@ -7,16 +7,54 @@ addon.name = addonName
 * fix ComparativeTooltip1 hiding when hovering things while crafting
 --]]
 
--- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT
--- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel
--- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink
--- GLOBALS: unpack
+-- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, TOP, BOTTOM
+-- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ItemTooltipTopLevel, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel, ZO_ListDialog1
+-- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager
+-- GLOBALS: unpack, type
 
 local SMITHING_MODE_EXTRACT = 1
 local SMITHING_MODE_CREATE = 2
 local SMITHING_MODE_IMPROVE = 3
 local SMITHING_MODE_DECONSTRUCT = 4
 local SMITHING_MODE_RESEARCH = 5
+
+local styleNames = {
+	[ITEMSTYLE_NONE] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_ARGONIAN] = GetString(SI_ITEMSTYLE6),
+	[ITEMSTYLE_RACIAL_BRETON] = GetString(SI_ITEMSTYLE1),
+	[ITEMSTYLE_RACIAL_DARK_ELF] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_HIGH_ELF] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_KHAJIIT] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_NORD] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_ORC] = GetString(SI_ITEMSTYLE3),
+	[ITEMSTYLE_RACIAL_REDGUARD] = GetString(SI_ITEMSTYLE0),
+	[ITEMSTYLE_RACIAL_WOOD_ELF] = GetString(SI_ITEMSTYLE0),
+}
+
+--[[
+[423] = "Keiner"
+[424] = "Bretonisch"
+[425] = "Rothwardonisch"
+[426] = "Orkisch"
+[427] = "Dunmerisch"
+[428] = "Nordisch"
+[429] = "Argonisch"
+[430] = "Altmerisch"
+[431] = "Bosmerisch"
+[432] = "Khajiitisch"
+[437] = "Dwemerisch"
+[438] = "Altelfisch"
+[439] = "Kaiserlich"
+[440] = "Barbarisch"
+[441] = "Banditisch"
+[442] = "Urtümlich"
+[443] = "Daedrisch"
+[454] = "Draugrisch"
+[455] = "Maormerisch"
+[456] = "Akavirisch"
+[457] = "Kaiserlich"
+[458] = "Yokudanisch"
+--]]
 
 -- ========================================================
 --  Settings
@@ -92,22 +130,34 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	-- fill tooltip
 	local tooltip = PopupTooltip
 	tooltip:ClearLines()
-	tooltip:SetBagItem(BAG_WORN, slot)
 	tooltip:SetHidden(false)
+	tooltip:SetBagItem(BAG_WORN, slot)
+
+	-- show style in tooltip
+	local _, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
+	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
-		local otherTooltip = ComparativeTooltip1
-		otherTooltip:ClearAnchors()
-		otherTooltip:SetAnchor(BOTTOMLEFT, tooltip, TOPLEFT, 0, -20)
-
+		local otherTooltip = addon.tooltip
 		otherTooltip:ClearLines()
-		otherTooltip:SetBagItem(BAG_WORN, otherSlot)
 		otherTooltip:SetHidden(false)
-		-- show animation
-		if otherTooltip:GetAlpha() == 0 then
-			otherTooltip.showAnimation:PlayFromStart()
-		end
+		otherTooltip:SetBagItem(BAG_WORN, otherSlot)
+
+		-- show style in tooltip & update icon
+		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
+		otherTooltip.icon:SetTexture(icon)
+		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+
+		-- move tooltips so secondary (bottom one) aligns properly
+		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
+		tooltip:ClearAnchors()
+		tooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY - otherTooltip:GetHeight() - 10)
+
+		-- otherTooltip:ClearAnchors()
+		-- otherTooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY)
+		-- tooltip:ClearAnchors()
+		-- tooltip:SetAnchor(BOTTOM, otherTooltip, TOP, 0, -10)
 	end
 end
 
@@ -120,6 +170,7 @@ local anchors = {
 local function UpdateCraftingComparison(self, setMode)
 	PopupTooltip:HideComparativeTooltips()
 	PopupTooltip:SetHidden(true)
+	addon.resultTooltip:SetHidden(true)
 
 	local mode = type(setMode) == 'number' and setMode or SMITHING.mode
 	if not mode or not GetSetting('compareMode'..mode) then return end
@@ -147,6 +198,12 @@ local function UpdateCraftingComparison(self, setMode)
 		-- deconstruct items; only when item is already selected
 		local itemSlot = SMITHING.deconstructionPanel.extractionSlot
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
+
+		if itemLink ~= '' then
+			addon.resultTooltip:ClearLines()
+			addon.resultTooltip:SetHidden(false)
+			addon.resultTooltip:SetLink(itemLink)
+		end
 	elseif mode == SMITHING_MODE_RESEARCH and setMode ~= SMITHING_MODE_RESEARCH then
 		-- research traits; we don't want tooltips just for switching panels
 		local data = SMITHING.researchPanel:GetSelectedData()
@@ -175,15 +232,37 @@ local function Initialize(eventCode, arg1, ...)
 		['compareMode'..SMITHING_MODE_RESEARCH] = true,
 	})
 
+	local wm = GetWindowManager()
+	local compareTooltip = wm:CreateControlFromVirtual(addonName..'Tooltip', ItemTooltipTopLevel, 'ItemTooltipBase')
+	compareTooltip:ClearAnchors()
+	compareTooltip:SetAnchor(TOP, PopupTooltip, BOTTOM, 0, 10)
+	compareTooltip:SetHidden(true)
+	compareTooltip:SetClampedToScreen(true)
+	compareTooltip:SetMouseEnabled(true)
+	compareTooltip:SetMovable(true)
+	addon.tooltip = compareTooltip
+
+	-- set any item so the sizing fits later on :P
+	compareTooltip:SetLink("|H3A92FF:item:43529:4:6:5365:4:6:0:0:0:0:0:0:0:0:0:4:0:0:45:0|h[Eisenaxt des Frosts]|h")
+
+	local icon = wm:CreateControl(addonName..'TooltipIcon', compareTooltip, CT_TEXTURE)
+	icon:SetWidth(64)
+	icon:SetHeight(64)
+    icon:SetAnchor(CENTER, compareTooltip, TOP, 0, 20)
+    icon:SetHidden(false)
+    compareTooltip.icon = icon
+
+	local resultTooltip = wm:CreateControlFromVirtual(addonName..'DeconstructTooltip', ZO_SmithingTopLevel, 'ItemTooltipBase')
+	resultTooltip:ClearAnchors()
+	resultTooltip:SetAnchor(BOTTOM, SMITHING.deconstructionPanel.extractionSlot.control, TOP, 0, -80)
+	resultTooltip:SetHidden(true)
+	resultTooltip:SetClampedToScreen(true)
+	resultTooltip:SetMouseEnabled(true)
+	addon.resultTooltip = resultTooltip
+
 	-- hooks
 	-- ----------------------------------------------------
 	ZO_PreHook(SMITHING, 'SetMode', UpdateCraftingComparison)
-	--[[ local orig_SetMode = SMITHING.SetMode
-	SMITHING.SetMode = function(...)
-		orig_SetMode(...)
-		UpdateCraftingComparison(...)
-	end --]]
-
 	ZO_PreHook(SMITHING, 'OnSelectedPatternChanged', UpdateCraftingComparison) -- crafting
 	ZO_PreHook(SMITHING, 'OnExtractionSlotChanged',  UpdateCraftingComparison) -- extraction / deconstruction
 	ZO_PreHook(SMITHING, 'OnImprovementSlotChanged', UpdateCraftingComparison) -- improvement
@@ -196,10 +275,7 @@ local function Initialize(eventCode, arg1, ...)
 		end
 	end)
 	ZO_PreHook(PopupTooltip, 'SetHidden', function(self, hidden)
-		-- hide ComparativeTooltip1 when hiding PopupTooltip
-		if not ZO_SmithingTopLevel:IsHidden() and ComparativeTooltip1 then
-			ComparativeTooltip1:SetHidden(true)
-		end
+		addon.tooltip:SetHidden(true)
 	end)
 
 	local orig = ItemTooltip.SetBagItem
