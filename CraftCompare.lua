@@ -95,9 +95,14 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	tooltip:SetHidden(false)
 	tooltip:SetBagItem(BAG_WORN, slot)
 
+	local font = 'ZoFontWinT2'
+	local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
+	local equipped = '('..GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)..')'
+
 	-- show style in tooltip
 	local _, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
-	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+	tooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
@@ -109,7 +114,8 @@ local function ShowCraftingComparisons(slot, otherSlot)
 		-- show style in tooltip & update icon
 		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
 		otherTooltip.icon:SetTexture(icon)
-		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+		otherTooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
 
 		-- move tooltips so secondary (bottom one) aligns properly
 		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
@@ -157,9 +163,14 @@ local function UpdateCraftingComparison(self, setMode)
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
 
 		if itemLink ~= '' then
-			addon.resultTooltip:ClearLines()
-			addon.resultTooltip:SetHidden(false)
-			addon.resultTooltip:SetLink(itemLink)
+			local tooltip = addon.resultTooltip
+			tooltip:ClearLines()
+			tooltip:SetHidden(false)
+			tooltip:SetLink(itemLink)
+
+			local icon, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
+			tooltip.icon:SetTexture(icon)
+			tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
 		end
 	elseif mode == SMITHING_MODE_RESEARCH and setMode ~= SMITHING_MODE_RESEARCH then
 		-- research traits; we don't want tooltips just for switching panels
@@ -205,9 +216,10 @@ local function Initialize(eventCode, arg1, ...)
 	local icon = wm:CreateControl(addonName..'TooltipIcon', compareTooltip, CT_TEXTURE)
 	icon:SetWidth(64)
 	icon:SetHeight(64)
-    icon:SetAnchor(_G.CENTER, compareTooltip, _G.TOP, 0, 20)
-    icon:SetHidden(false)
-    compareTooltip.icon = icon
+	icon:SetAnchor(_G.CENTER, compareTooltip, _G.TOP, 0, 20)
+	icon:SetHidden(false)
+	icon:SetExcludeFromResizeToFitExtents(true)
+	compareTooltip.icon = icon
 
 	local resultTooltip = wm:CreateControlFromVirtual(addonName..'DeconstructTooltip', ZO_SmithingTopLevel, 'ItemTooltipBase')
 	resultTooltip:ClearAnchors()
@@ -216,6 +228,14 @@ local function Initialize(eventCode, arg1, ...)
 	resultTooltip:SetClampedToScreen(true)
 	resultTooltip:SetMouseEnabled(true)
 	addon.resultTooltip = resultTooltip
+
+	local resultIcon = wm:CreateControl(addonName..'DeconstructTooltipIcon', resultTooltip, CT_TEXTURE)
+	resultIcon:SetWidth(64)
+	resultIcon:SetHeight(64)
+	resultIcon:SetAnchor(_G.CENTER, resultTooltip, _G.TOP, 0, 0)
+	resultIcon:SetHidden(false)
+	resultIcon:SetExcludeFromResizeToFitExtents(true)
+	resultTooltip.icon = resultIcon
 
 	-- hooks
 	-- ----------------------------------------------------
