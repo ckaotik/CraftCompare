@@ -136,7 +136,7 @@ local function UpdateCraftingComparison(self, setMode)
 	addon.resultTooltip:SetHidden(true)
 
 	local mode = type(setMode) == 'number' and setMode or SMITHING.mode
-	if not mode or not GetSetting('compareMode'..mode) or ZO_SmithingTopLevel:IsHidden() then return end
+	if not mode or not GetSetting('compareMode'..mode) then return end
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
@@ -279,4 +279,3 @@ end
 
 local em = GetEventManager()
 em:RegisterForEvent('CraftCompare_Loaded', EVENT_ADD_ON_LOADED, Initialize)
-em:RegisterForEvent('CraftCompare_CraftClose', EVENT_END_CRAFTING_STATION_INTERACT, UpdateCraftingComparison)
