@@ -7,9 +7,9 @@ addon.name = addonName
 * fix ComparativeTooltip1 hiding when hovering things while crafting
 --]]
 
--- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, CT_TEXTURE
+-- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, CT_TEXTURE, EQUIP_SLOT_MAIN_HAND, EQUIP_SLOT_OFF_HAND, EQUIP_SLOT_BACKUP_MAIN, EQUIP_SLOT_BACKUP_OFF
 -- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ItemTooltipTopLevel, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel, ZO_ListDialog1
--- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager, GetString, GetItemLinkInfo, GetInterfaceColor
+-- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager, GetString, GetItemLinkInfo, GetInterfaceColor, IsShiftKeyDown
 -- GLOBALS: unpack, type
 
 local SMITHING_MODE_EXTRACT = 1
@@ -48,6 +48,8 @@ local function CreateSettings()
 	LAM:AddCheckbox(panel, addonName..'ToggleResearch',
 		'Research', 'Enable item comparison when in "Research" mode',
 		function() return GetSetting('compareMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('compareMode'..SMITHING_MODE_RESEARCH, value) end)
+	LAM:AddDescription(panel, addonName..'CompareHint',
+		'|cFFFFB0'..'Hold down SHIFT to compare to your alternate weapon set.\n(Only works in PopupTooltip style)'..'|r', '|cFFFFB0'..'Hint'..'|r')
 
 	-- tooltip mode
 	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
@@ -85,6 +87,15 @@ local function GetValidSmithingItemLink(patternIndex)
 end
 
 local function ShowCraftingComparisons(slot, otherSlot)
+	if IsShiftKeyDown() then
+		if slot == EQUIP_SLOT_MAIN_HAND then slot = EQUIP_SLOT_BACKUP_MAIN
+		elseif slot == EQUIP_SLOT_OFF_HAND then slot = EQUIP_SLOT_BACKUP_OFF
+		end
+		if otherSlot == EQUIP_SLOT_MAIN_HAND then otherSlot = EQUIP_SLOT_BACKUP_MAIN
+		elseif otherSlot == EQUIP_SLOT_OFF_HAND then otherSlot = EQUIP_SLOT_BACKUP_OFF
+		end
+	end
+
 	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
 	local mode = SMITHING.mode
 	if not mode or not itemLink or itemLink == '' then return end
@@ -95,14 +106,18 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	tooltip:SetHidden(false)
 	tooltip:SetBagItem(BAG_WORN, slot)
 
-	local font = 'ZoFontWinT2'
-	local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
-	-- local equipped = '('..GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)..')'
+	-- local font = 'ZoFontWinT2'
+	-- local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
+	-- local equipped   = GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)
+	-- local bound      = GetString(_G.SI_ITEM_FORMAT_STR_BOUND) -- check with IsItemBound
+	-- SI_WEAPONTYPE9, SI_EQUIPTYPE3, SI_FORMAT_BULLET_SPACING
 
 	-- show style in tooltip
-	local _, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
-	tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
-	-- tooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+	-- local _, _, _, equipType, itemStyle = GetItemLinkInfo(itemLink)
+	-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+
+	-- local isWeapon = GetItemFilterTypeInfo(BAG_WORN, slot) == _G.ITEMFILTERTYPE_WEAPONS
+	-- local headerLeft = not isWeapon and _G['SI_EQUIPTYPE'..equipType] or 'StupidWeaponThatICanTGetTheTypeOf'
 
 	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
@@ -114,8 +129,7 @@ local function ShowCraftingComparisons(slot, otherSlot)
 		-- show style in tooltip & update icon
 		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
 		otherTooltip.icon:SetTexture(icon)
-		otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
-		-- otherTooltip:AddHeaderLine(equipped, font, 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+		-- otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
 
 		-- move tooltips so secondary (bottom one) aligns properly
 		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
@@ -188,7 +202,7 @@ end
 -- ========================================================
 --  Setup
 -- ========================================================
-local function Initialize(eventCode, arg1, ...)
+local function Initialize(eventID, arg1, ...)
 	if arg1 ~= addonName then return end
 
 	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 2, nil, {
@@ -237,6 +251,23 @@ local function Initialize(eventCode, arg1, ...)
 	resultIcon:SetExcludeFromResizeToFitExtents(true)
 	resultTooltip.icon = resultIcon
 
+	-- compare to off-weapon set
+	-- ----------------------------------------------------
+	local isSHIFTCompared, lastSHIFTCheck = nil, 0
+	local OnUpdate = SMITHING.control:GetHandler('OnUpdate')
+	SMITHING.control:SetHandler('OnUpdate', function(self, elapsed)
+		-- check with delay
+		if elapsed <= lastSHIFTCheck + 0.25 then return end
+		lastSHIFTCheck = elapsed
+
+		local shift = IsShiftKeyDown()
+		if shift ~= isSHIFTCompared then
+			UpdateCraftingComparison()
+			isSHIFTCompared = shift
+		end
+		if OnUpdate then OnUpdate(self, elapsed) end
+	end)
+
 	-- hooks
 	-- ----------------------------------------------------
 	ZO_PreHook(SMITHING, 'SetMode', UpdateCraftingComparison)
@@ -278,4 +309,7 @@ local function Initialize(eventCode, arg1, ...)
 end
 
 local em = GetEventManager()
-em:RegisterForEvent('CraftCompare_Loaded', EVENT_ADD_ON_LOADED, Initialize)
+em:RegisterForEvent(addonName, EVENT_ADD_ON_LOADED, Initialize)
+em:RegisterForEvent(addonName, EVENT_END_CRAFTING_STATION_INTERACT, function()
+	PopupTooltip:SetHidden(true)
+end)
