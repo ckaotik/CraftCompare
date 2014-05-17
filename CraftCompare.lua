@@ -90,9 +90,13 @@ local function ShowCraftingComparisons(slot, otherSlot)
 	if IsShiftKeyDown() then
 		if slot == EQUIP_SLOT_MAIN_HAND then slot = EQUIP_SLOT_BACKUP_MAIN
 		elseif slot == EQUIP_SLOT_OFF_HAND then slot = EQUIP_SLOT_BACKUP_OFF
+		elseif slot == EQUIP_SLOT_BACKUP_MAIN then slot = EQUIP_SLOT_MAIN_HAND
+		elseif slot == EQUIP_SLOT_BACKUP_OFF then slot = EQUIP_SLOT_OFF_HAND
 		end
 		if otherSlot == EQUIP_SLOT_MAIN_HAND then otherSlot = EQUIP_SLOT_BACKUP_MAIN
 		elseif otherSlot == EQUIP_SLOT_OFF_HAND then otherSlot = EQUIP_SLOT_BACKUP_OFF
+		elseif otherSlot == EQUIP_SLOT_BACKUP_MAIN then otherSlot = EQUIP_SLOT_MAIN_HAND
+		elseif otherSlot == EQUIP_SLOT_BACKUP_OFF then otherSlot = EQUIP_SLOT_OFF_HAND
 		end
 	end
 
