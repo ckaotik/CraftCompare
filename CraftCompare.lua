@@ -4,19 +4,28 @@ addon.name = addonName
 
 --[[-- TODO --
 * Deconstruction should show item tooltip + comparison popup
-* fix ComparativeTooltip1 hiding when hovering things while crafting
+* don't overwrite user tooltip positions
 --]]
 
--- GLOBALS: _G, SMITHING, TOPLEFT, BOTTOMLEFT, BOTTOMRIGHT, BAG_WORN, LINK_STYLE_DEFAULT, CT_TEXTURE, EQUIP_SLOT_MAIN_HAND, EQUIP_SLOT_OFF_HAND, EQUIP_SLOT_BACKUP_MAIN, EQUIP_SLOT_BACKUP_OFF
--- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ItemTooltipTopLevel, ComparativeTooltip1, ZO_PreHook, ZO_SavedVars, ZO_SmithingTopLevel, ZO_ListDialog1
--- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager, GetString, GetItemLinkInfo, GetInterfaceColor, IsShiftKeyDown
--- GLOBALS: unpack, type
+-- GLOBALS: _G, SMITHING, LINK_STYLE_DEFAULT, SI_FORMAT_BULLET_SPACING, SI_TOOLTIP_ITEM_NAME
+-- GLOBALS: LibStub, PopupTooltip, ItemTooltip, ItemTooltipTopLevel, ComparativeTooltip1, ComparativeTooltip2, ZO_PreHook, ZO_PreHookHandler, ZO_SavedVars, ZO_SmithingTopLevel, ZO_ListDialog1
+-- GLOBALS: GetItemLink, GetSmithingPatternResultLink, GetSmithingImprovedItemLink, GetComparisonEquipSlotsFromItemLink, GetWindowManager, GetString, GetItemLinkInfo, GetInterfaceColor, IsShiftKeyDown, ZO_PlayShowAnimationOnComparisonTooltip, ZO_Tooltips_SetupDynamicTooltipAnchors, ZO_ItemTooltip_SetEquippedInfo, ZO_Tooltip_AddDivider, ZO_Inventory_GetBagAndIndex, LocalizeString
+-- GLOBALS: unpack, type, moc, zo_strjoin, zo_callLater
 
 local SMITHING_MODE_EXTRACT = 1
 local SMITHING_MODE_CREATE = 2
 local SMITHING_MODE_IMPROVE = 3
 local SMITHING_MODE_DECONSTRUCT = 4
 local SMITHING_MODE_RESEARCH = 5
+
+local function L(text)
+	if type(text) == 'number' then
+		-- get the string from this constant
+		text = GetString(text)
+	end
+	-- clean up suffixes such as ^F or ^S
+	return LocalizeString(GetString(SI_TOOLTIP_ITEM_NAME), text)
+end
 
 -- ========================================================
 --  Settings
@@ -49,10 +58,13 @@ local function CreateSettings()
 		'Research', 'Enable item comparison when in "Research" mode',
 		function() return GetSetting('compareMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('compareMode'..SMITHING_MODE_RESEARCH, value) end)
 	LAM:AddDescription(panel, addonName..'CompareHint',
-		'|cFFFFB0'..'Hold down SHIFT to compare to your alternate weapon set.\n(Only works in PopupTooltip style)'..'|r', '|cFFFFB0'..'Hint'..'|r')
+		'|cFFFFB0'..'Hold down SHIFT to compare to your alternate weapon set.'..'|r', '|cFFFFB0'..'Hint'..'|r')
 
 	-- tooltip mode
 	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
+	LAM:AddCheckbox(panel, addonName..'ToggleInfo',
+		'Item Details', 'Enable display of item details such as item style',
+		function() return GetSetting('showInfo') end, function(value) SetSetting('showInfo', value) end)
 	LAM:AddDropdown(panel, addonName..'TTStyleDeconstruct',
 		'Deconstruct', nil,
 		{'PopupTooltip', 'ComparativeTooltip'},
@@ -86,70 +98,114 @@ local function GetValidSmithingItemLink(patternIndex)
 	end
 end
 
-local function ShowCraftingComparisons(slot, otherSlot)
-	if IsShiftKeyDown() then
-		if slot == EQUIP_SLOT_MAIN_HAND then slot = EQUIP_SLOT_BACKUP_MAIN
-		elseif slot == EQUIP_SLOT_OFF_HAND then slot = EQUIP_SLOT_BACKUP_OFF
-		elseif slot == EQUIP_SLOT_BACKUP_MAIN then slot = EQUIP_SLOT_MAIN_HAND
-		elseif slot == EQUIP_SLOT_BACKUP_OFF then slot = EQUIP_SLOT_OFF_HAND
-		end
-		if otherSlot == EQUIP_SLOT_MAIN_HAND then otherSlot = EQUIP_SLOT_BACKUP_MAIN
-		elseif otherSlot == EQUIP_SLOT_OFF_HAND then otherSlot = EQUIP_SLOT_BACKUP_OFF
-		elseif otherSlot == EQUIP_SLOT_BACKUP_MAIN then otherSlot = EQUIP_SLOT_MAIN_HAND
-		elseif otherSlot == EQUIP_SLOT_BACKUP_OFF then otherSlot = EQUIP_SLOT_OFF_HAND
+local function AddCraftingItemInfo(tooltip, itemLink, slot)
+	local font = 'ZoFontWinT2'
+	local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
+	local separator = ' '..GetString(SI_FORMAT_BULLET_SPACING)
+
+	local texture, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(itemLink)
+
+	-- update item icon
+	local icon = tooltip:GetNamedChild('Icon')
+	if icon then
+		local hidden = not texture
+		tooltip:GetNamedChild('FadeLeft'):SetHidden(hidden)
+    	tooltip:GetNamedChild('FadeRight'):SetHidden(hidden)
+
+		icon:SetHidden(hidden)
+		if not hidden then
+			icon:SetTexture(texture)
 		end
 	end
 
-	local itemLink = slot and GetItemLink(BAG_WORN, slot, LINK_STYLE_DEFAULT)
-	local mode = SMITHING.mode
-	if not mode or not itemLink or itemLink == '' then return end
+	-- update equipped info
+	if slot then
+		ZO_ItemTooltip_SetEquippedInfo(tooltip, slot)
+	end
 
-	-- fill tooltip
-	local tooltip = PopupTooltip
+	if not GetSetting('showInfo') then return end
+
+	-- show item style
+	ZO_Tooltip_AddDivider(tooltip)
+	tooltip:AddLine(zo_strjoin(separator, L(_G['SI_ITEMSTYLE'..itemStyle])), font, r, g, b)
+	-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+end
+
+local alternateSlot = {
+	[_G.EQUIP_SLOT_MAIN_HAND]   = _G.EQUIP_SLOT_BACKUP_MAIN,
+	[_G.EQUIP_SLOT_BACKUP_MAIN] = _G.EQUIP_SLOT_MAIN_HAND,
+	[_G.EQUIP_SLOT_OFF_HAND]    = _G.EQUIP_SLOT_BACKUP_OFF,
+	[_G.EQUIP_SLOT_BACKUP_OFF]  = _G.EQUIP_SLOT_OFF_HAND,
+}
+local function ShowCraftingComparisons(slot, otherSlot, tooltip, otherTooltip)
+	if IsShiftKeyDown() then
+		slot = alternateSlot[slot]
+		otherSlot = alternateSlot[otherSlot]
+	end
+
+	local itemLink = slot and GetItemLink(_G.BAG_WORN, slot, LINK_STYLE_DEFAULT)
+	if not itemLink or itemLink == '' then return end
+
+	-- handle primary tooltip
+	tooltip = tooltip or PopupTooltip
 	tooltip:ClearLines()
 	tooltip:SetHidden(false)
-	tooltip:SetBagItem(BAG_WORN, slot)
+	tooltip:SetLink(itemLink)
 
-	-- local font = 'ZoFontWinT2'
-	-- local r, g, b, a = GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP)
-	-- local equipped   = GetString(_G.SI_ITEM_FORMAT_STR_EQUIPPED)
-	-- local bound      = GetString(_G.SI_ITEM_FORMAT_STR_BOUND) -- check with IsItemBound
-	-- SI_WEAPONTYPE9, SI_EQUIPTYPE3, SI_FORMAT_BULLET_SPACING
+	-- additional information
+	AddCraftingItemInfo(tooltip, itemLink, slot)
 
-	-- show style in tooltip
-	-- local _, _, _, equipType, itemStyle = GetItemLinkInfo(itemLink)
-	-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
-
-	-- local isWeapon = GetItemFilterTypeInfo(BAG_WORN, slot) == _G.ITEMFILTERTYPE_WEAPONS
-	-- local headerLeft = not isWeapon and _G['SI_EQUIPTYPE'..equipType] or 'StupidWeaponThatICanTGetTheTypeOf'
-
-	local otherLink = otherSlot and GetItemLink(BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
+	-- handle secondary tooltip
+	local otherLink = otherSlot and GetItemLink(_G.BAG_WORN, otherSlot, LINK_STYLE_DEFAULT)
 	if otherLink and otherLink ~= '' then
-		local otherTooltip = addon.tooltip
+		otherTooltip = otherTooltip or addon.tooltip
 		otherTooltip:ClearLines()
 		otherTooltip:SetHidden(false)
-		otherTooltip:SetBagItem(BAG_WORN, otherSlot)
+		otherTooltip:SetLink(otherLink)
 
-		-- show style in tooltip & update icon
-		local icon, sellPrice, canUse, equipType, itemStyle = GetItemLinkInfo(otherLink)
-		otherTooltip.icon:SetTexture(icon)
-		-- otherTooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), font, 0, _G.TOOLTIP_HEADER_SIDE_RIGHT, r, g, b, a)
+		-- additional information
+		AddCraftingItemInfo(otherTooltip, otherLink, otherSlot)
+	else
+		-- unset so return values have meaning
+		otherTooltip = nil
+	end
 
-		-- move tooltips so secondary (bottom one) aligns properly
-		local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
-		tooltip:ClearAnchors()
-		tooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY - otherTooltip:GetHeight() - 10)
+	return tooltip, otherTooltip
+end
+
+local function UpdateComparativeTooltips()
+	local button = moc() and moc():GetNamedChild('Button')
+	if button then
+		local bag, slot = ZO_Inventory_GetBagAndIndex(button)
+		if not bag or not slot then return end
+		local itemLink = GetItemLink(bag, slot)
+		local slot, otherSlot = GetComparisonEquipSlotsFromItemLink(itemLink or '')
+
+		local tooltip, otherTooltip = ComparativeTooltip1, ComparativeTooltip2
+		local tt1, tt2 = ShowCraftingComparisons(slot, otherSlot, tooltip, otherTooltip)
+		if tt1 then
+			ZO_PlayShowAnimationOnComparisonTooltip(tt1)
+		else
+			ItemTooltip:HideComparativeTooltips()
+		end
+		if tt2 then
+			ZO_PlayShowAnimationOnComparisonTooltip(tt2)
+		else
+			otherTooltip:SetHidden(true)
+		end
+		-- position things nicely
+		ZO_Tooltips_SetupDynamicTooltipAnchors(ItemTooltip, button.tooltipAnchor or button, tooltip, otherTooltip)
 	end
 end
 
 local anchors = {
-	[SMITHING_MODE_CREATE]      = { BOTTOMRIGHT, SMITHING.creationPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
-	[SMITHING_MODE_IMPROVE]     = { BOTTOMRIGHT, SMITHING.improvementPanel.resultTooltip, BOTTOMLEFT, -10, 0 },
-	[SMITHING_MODE_DECONSTRUCT] = { BOTTOMRIGHT, SMITHING.deconstructionPanel.extractionSlot.control, TOPLEFT, -190+4, -80 },
-	[SMITHING_MODE_RESEARCH]    = { BOTTOMRIGHT, GuiRoot, CENTER, -240, 257 },
+	[SMITHING_MODE_CREATE]      = { _G.BOTTOMRIGHT, SMITHING.creationPanel.resultTooltip, _G.BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_IMPROVE]     = { _G.BOTTOMRIGHT, SMITHING.improvementPanel.resultTooltip, _G.BOTTOMLEFT, -10, 0 },
+	[SMITHING_MODE_DECONSTRUCT] = { _G.BOTTOMRIGHT, SMITHING.deconstructionPanel.extractionSlot.control, _G.TOPLEFT, -190+4, -80 },
+	[SMITHING_MODE_RESEARCH]    = { _G.BOTTOMRIGHT, GuiRoot, _G.CENTER, -240, 257 },
 }
 local function UpdateCraftingComparison(self, setMode)
-	PopupTooltip:HideComparativeTooltips()
+	local wasHidden = PopupTooltip:IsHidden()
 	PopupTooltip:SetHidden(true)
 	addon.resultTooltip:SetHidden(true)
 
@@ -158,12 +214,8 @@ local function UpdateCraftingComparison(self, setMode)
 
 	-- avoid showing both PopupTooltip -and- ComparativeTooltip simultaneously
 	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
-		ItemTooltip:ShowComparativeTooltips()
+		UpdateComparativeTooltips()
 		return
-	else
-		local tooltip = PopupTooltip
-		tooltip:ClearAnchors()
-		tooltip:SetAnchor(unpack(anchors[mode or 1] or {}))
 	end
 
 	-- create item link to get slot info
@@ -181,14 +233,13 @@ local function UpdateCraftingComparison(self, setMode)
 		itemLink = GetItemLink(itemSlot.bagId, itemSlot.slotIndex, LINK_STYLE_DEFAULT)
 
 		if itemLink ~= '' then
+			-- update our custom deconstruct tooltip
 			local tooltip = addon.resultTooltip
 			tooltip:ClearLines()
 			tooltip:SetHidden(false)
 			tooltip:SetLink(itemLink)
 
-			local icon, _, _, _, itemStyle = GetItemLinkInfo(itemLink)
-			tooltip.icon:SetTexture(icon)
-			-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
+			AddCraftingItemInfo(tooltip, itemLink)
 		end
 	elseif mode == SMITHING_MODE_RESEARCH and setMode ~= SMITHING_MODE_RESEARCH then
 		-- research traits; we don't want tooltips just for switching panels
@@ -198,9 +249,35 @@ local function UpdateCraftingComparison(self, setMode)
 		end
 	end
 
-	-- show comparison
+	-- show our tooltips
 	local slot, otherSlot = GetComparisonEquipSlotsFromItemLink(itemLink or '')
-	ShowCraftingComparisons(slot, otherSlot)
+
+	-- update tooltip positions
+	local tooltip, otherTooltip = ShowCraftingComparisons(slot, otherSlot)
+	if tooltip then
+		if otherTooltip and otherTooltip:GetHeight() == 0 then
+			tooltip:SetHidden(true)
+			otherTooltip:SetHidden(true)
+			zo_callLater(UpdateCraftingComparison, 1)
+			return
+		end
+
+		ZO_PlayShowAnimationOnComparisonTooltip(tooltip)
+
+		tooltip:ClearAnchors()
+		tooltip:SetAnchor(unpack(anchors[mode] or {}))
+
+		if otherTooltip then
+			ZO_PlayShowAnimationOnComparisonTooltip(otherTooltip)
+
+			-- move tooltips so secondary (bottom one) aligns properly
+			local isValidAnchor, point, relativeTo, relativePoint, offsetX, offsetY = tooltip:GetAnchor(0)
+			if isValidAnchor then
+				tooltip:ClearAnchors()
+				tooltip:SetAnchor(point, relativeTo, relativePoint, offsetX, offsetY - otherTooltip:GetHeight() - 10)
+			end
+		end
+	end
 end
 
 -- ========================================================
@@ -216,60 +293,40 @@ local function Initialize(eventID, arg1, ...)
 		['compareMode'..SMITHING_MODE_IMPROVE] = true,
 		['compareMode'..SMITHING_MODE_DECONSTRUCT] = true,
 		['compareMode'..SMITHING_MODE_RESEARCH] = true,
+		showInfo = true,
 	})
 
-	local wm = GetWindowManager()
-	local compareTooltip = wm:CreateControlFromVirtual(addonName..'Tooltip', ItemTooltipTopLevel, 'ItemTooltipBase')
+	local wm = GetWindowManager() -- ItemTooltipTopLevel PopupTooltip
+	local compareTooltip = wm:CreateControlFromVirtual(addonName..'Tooltip', ItemTooltipTopLevel, 'ZO_ItemIconTooltip')
 	compareTooltip:ClearAnchors()
 	compareTooltip:SetAnchor(_G.TOP, PopupTooltip, _G.BOTTOM, 0, 10)
 	compareTooltip:SetHidden(true)
 	compareTooltip:SetClampedToScreen(true)
 	compareTooltip:SetMouseEnabled(true)
 	compareTooltip:SetMovable(true)
+	compareTooltip:SetExcludeFromResizeToFitExtents(true)
 	addon.tooltip = compareTooltip
 
-	-- set any item so the sizing fits later on :P
-	compareTooltip:SetLink("|H3A92FF:item:43529:4:6:5365:4:6:0:0:0:0:0:0:0:0:0:4:0:0:45:0|h[Eisenaxt des Frosts]|h")
-
-	local icon = wm:CreateControl(addonName..'TooltipIcon', compareTooltip, CT_TEXTURE)
-	icon:SetWidth(64)
-	icon:SetHeight(64)
-	icon:SetAnchor(_G.CENTER, compareTooltip, _G.TOP, 0, 20)
-	icon:SetHidden(false)
-	icon:SetExcludeFromResizeToFitExtents(true)
-	compareTooltip.icon = icon
-
-	local resultTooltip = wm:CreateControlFromVirtual(addonName..'DeconstructTooltip', ZO_SmithingTopLevel, 'ItemTooltipBase')
+	local resultTooltip = wm:CreateControlFromVirtual(addonName..'DeconstructTooltip', ZO_SmithingTopLevel, 'ZO_ItemIconTooltip')
 	resultTooltip:ClearAnchors()
 	resultTooltip:SetAnchor(_G.BOTTOM, SMITHING.deconstructionPanel.extractionSlot.control, _G.TOP, 0, -80)
 	resultTooltip:SetHidden(true)
 	resultTooltip:SetClampedToScreen(true)
-	resultTooltip:SetMouseEnabled(true)
 	addon.resultTooltip = resultTooltip
-
-	local resultIcon = wm:CreateControl(addonName..'DeconstructTooltipIcon', resultTooltip, CT_TEXTURE)
-	resultIcon:SetWidth(64)
-	resultIcon:SetHeight(64)
-	resultIcon:SetAnchor(_G.CENTER, resultTooltip, _G.TOP, 0, 0)
-	resultIcon:SetHidden(false)
-	resultIcon:SetExcludeFromResizeToFitExtents(true)
-	resultTooltip.icon = resultIcon
 
 	-- compare to off-weapon set
 	-- ----------------------------------------------------
 	local isSHIFTCompared, lastSHIFTCheck = nil, 0
-	local OnUpdate = SMITHING.control:GetHandler('OnUpdate')
-	SMITHING.control:SetHandler('OnUpdate', function(self, elapsed)
+	ZO_PreHookHandler(SMITHING.control, 'OnUpdate', function(self, elapsed)
 		-- check with delay
 		if elapsed <= lastSHIFTCheck + 0.25 then return end
 		lastSHIFTCheck = elapsed
 
 		local shift = IsShiftKeyDown()
 		if shift ~= isSHIFTCompared then
-			UpdateCraftingComparison()
 			isSHIFTCompared = shift
+			UpdateCraftingComparison()
 		end
-		if OnUpdate then OnUpdate(self, elapsed) end
 	end)
 
 	-- hooks
@@ -300,13 +357,7 @@ local function Initialize(eventID, arg1, ...)
 			or GetSetting('tooltipMode'..SMITHING.mode) ~= 'ComparativeTooltip' then return end
 
 		-- we want to show comparative tooltips
-		self:ShowComparativeTooltips()
-		for i = 1, 2 do
-			local tooltip = _G['ComparativeTooltip'..i]
-			if not tooltip:IsHidden() and tooltip.showAnimation then
-				tooltip.showAnimation:PlayFromStart()
-			end
-		end
+		UpdateCraftingComparison()
 	end
 
 	CreateSettings()
