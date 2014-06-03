@@ -23,8 +23,7 @@ local function L(text)
 		-- get the string from this constant
 		text = GetString(text)
 	end
-	-- clean up suffixes such as ^F or ^S
-	return LocalizeString(GetString(SI_TOOLTIP_ITEM_NAME), text)
+	return zo_strformat(SI_TOOLTIP_ITEM_NAME, text)
 end
 
 -- ========================================================
@@ -285,6 +284,7 @@ end
 -- ========================================================
 local function Initialize(eventID, arg1, ...)
 	if arg1 ~= addonName then return end
+	EVENT_MANAGER:UnregisterForEvent(addonName, EVENT_ADD_ON_LOADED)
 
 	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 2, nil, {
 		['tooltipMode'..SMITHING_MODE_DECONSTRUCT] = 'PopupTooltip',
