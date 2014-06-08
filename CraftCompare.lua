@@ -3,6 +3,8 @@ _G[addonName] = addon
 
 --[[-- TODO --
 * don't overwrite user tooltip positions
+* add additional info to base tooltips as well
+* show more info, not just style
 --]]
 
 -- GLOBALS: _G, SMITHING, LINK_STYLE_DEFAULT, SI_FORMAT_BULLET_SPACING, SI_TOOLTIP_ITEM_NAME
@@ -142,6 +144,7 @@ local function AddCraftingItemInfo(tooltip, itemLink, slot)
 	if not GetSetting('showInfo') then return end
 
 	-- show item style
+	tooltip:AddVerticalPadding(10)
 	ZO_Tooltip_AddDivider(tooltip)
 	tooltip:AddLine(zo_strjoin(separator, L(_G['SI_ITEMSTYLE'..itemStyle])), font, r, g, b)
 	-- tooltip:AddHeaderLine(GetString(_G['SI_ITEMSTYLE'..itemStyle]), 'ZoFontWinT2', 1, _G.TOOLTIP_HEADER_SIDE_RIGHT, GetInterfaceColor(_G.INTERFACE_COLOR_TYPE_ATTRIBUTE_TOOLTIP))
@@ -152,16 +155,15 @@ local function UpdateTooltips(slot, otherSlot, tooltip, otherTooltip)
 	local itemLink = slot and GetItemLink(_G.BAG_WORN, slot)
 	tooltip = tooltip or PopupTooltip
 	if itemLink and itemLink ~= '' then
-		tooltip:ClearLines()
-		tooltip:SetLink(itemLink)
-		tooltip:SetHidden(false)
+		InitializeTooltip(tooltip)
 		ZO_PlayShowAnimationOnComparisonTooltip(tooltip)
 
-		-- additional information
+		-- fill in tooltip information
+		tooltip:SetLink(itemLink)
 		AddCraftingItemInfo(tooltip, itemLink, slot)
 	else
-		-- ClearTooltip(tooltip)
-		tooltip:SetHidden(true)
+		ClearTooltip(tooltip)
+		ZO_PlayHideAnimationOnComparisonTooltip(tooltip)
 		tooltip = nil
 	end
 
@@ -169,17 +171,15 @@ local function UpdateTooltips(slot, otherSlot, tooltip, otherTooltip)
 	local otherLink = otherSlot and GetItemLink(_G.BAG_WORN, otherSlot)
 	otherTooltip = otherTooltip or addon.tooltip
 	if otherLink and otherLink ~= '' then
-		otherTooltip:ClearLines()
-		otherTooltip:SetLink(otherLink)
-		otherTooltip:SetHidden(false)
-		ZO_PlayShowAnimationOnComparisonTooltip(otherTooltip)
+		InitializeTooltip(otherTooltip)
+		-- ZO_PlayShowAnimationOnComparisonTooltip(otherTooltip)
 
-		-- additional information
+		-- fill in tooltip information
+		otherTooltip:SetLink(otherLink)
 		AddCraftingItemInfo(otherTooltip, otherLink, otherSlot)
 	else
-		-- ClearTooltip(otherTooltip)
+		ClearTooltip(otherTooltip)
 		-- ZO_PlayHideAnimationOnComparisonTooltip(otherTooltip)
-		otherTooltip:SetHidden(true)
 		otherTooltip = nil
 	end
 
@@ -369,13 +369,12 @@ local function Initialize(eventID, arg1, ...)
 			local itemLink = GetItemLink(bag, slot)
 
 			-- update our custom deconstruct tooltip
-			tooltip:ClearLines()
+			InitializeTooltip(tooltip)
 			tooltip:SetLink(itemLink)
-			tooltip:SetHidden(false)
 
 			AddCraftingItemInfo(tooltip, itemLink)
 		else
-			tooltip:SetHidden(true)
+			ClearTooltip(tooltip)
 		end
 	end)
 
