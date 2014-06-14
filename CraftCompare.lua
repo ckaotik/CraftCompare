@@ -447,8 +447,7 @@ local function Initialize(eventID, arg1, ...)
 	ItemTooltip.SetBagItem = function(self, bag, slot)
 		orig(self, bag, slot)
 
-		local compareStyle = GetSetting('compareMode'..SMITHING.mode)
-		if not SMITHING.control:IsHidden() and compareStyle and compareStyle == 'ComparativeTooltip' then
+		if not SMITHING.control:IsHidden() and GetSetting('compareMode'..SMITHING.mode) == 'ComparativeTooltip' then
 			UpdateComparativeTooltips()
 		end
 	end
