@@ -39,40 +39,101 @@ local function SetSetting(setting, value)
 end
 
 local function CreateSettings()
-	local LAM = LibStub:GetLibrary('LibAddonMenu-1.0')
-	local panel = LAM:CreateControlPanel(addonName..'Settings', addonName)
+	local panelData = {
+		type = 'panel',
+		name = addonName,
+		author = 'ckaotik',
+		version = '1.10',
+		registerForRefresh = true,
+		registerForDefaults = true,
+	}
 
-	-- modes to display tooltips for
-	LAM:AddHeader(panel, addonName..'HeaderModes', 'Compare in crafting mode')
-	LAM:AddCheckbox(panel, addonName..'ToggleCreate',
-		'Creation', 'Enable item comparison when in "Creation" mode',
-		function() return GetSetting('compareMode'..SMITHING_MODE_CREATE) end, function(value) SetSetting('compareMode'..SMITHING_MODE_CREATE, value) end)
-	LAM:AddCheckbox(panel, addonName..'ToggleImprove',
-		'Improvement', 'Enable item comparison when in "Improvement" mode',
-		function() return GetSetting('compareMode'..SMITHING_MODE_IMPROVE) end, function(value) SetSetting('compareMode'..SMITHING_MODE_IMPROVE, value) end)
-	LAM:AddCheckbox(panel, addonName..'ToggleDeconstruct',
-		'Deconstruction', 'Enable item comparison when in "Deconstruction" mode',
-		function() return GetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT) end, function(value) SetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT, value) end)
-	LAM:AddCheckbox(panel, addonName..'ToggleResearch',
-		'Research', 'Enable item comparison when in "Research" mode',
-		function() return GetSetting('compareMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('compareMode'..SMITHING_MODE_RESEARCH, value) end)
-	LAM:AddDescription(panel, addonName..'CompareHint',
-		'|cFFFFB0'..'Hold down SHIFT to compare to your alternate weapon set.'..'|r', '|cFFFFB0'..'Hint'..'|r')
+	local optionsTable = {
+		{
+			type = 'description',
+			text = 'CraftCompare helps your to compare with your current equipment when you are crafting.',
+		},
 
-	-- tooltip mode
-	LAM:AddHeader(panel, addonName..'HeaderTTStyle', 'Tooltip Style')
-	LAM:AddCheckbox(panel, addonName..'ToggleInfo',
-		'Item Details', 'Enable display of item details such as item style',
-		function() return GetSetting('showInfo') end, function(value) SetSetting('showInfo', value) end)
-	LAM:AddDropdown(panel, addonName..'TTStyleDeconstruct',
-		'Deconstruct', nil,
-		{'PopupTooltip', 'ComparativeTooltip'},
-		function(...) return GetSetting('tooltipMode'..SMITHING_MODE_DECONSTRUCT) end, function(value) SetSetting('tooltipMode'..SMITHING_MODE_DECONSTRUCT, value) end)
-	LAM:AddDropdown(panel, addonName..'TTStyleResearch',
-		'Research', nil,
-		{'PopupTooltip', 'ComparativeTooltip'},
-		function(...) return GetSetting('tooltipMode'..SMITHING_MODE_RESEARCH) end, function(value) SetSetting('tooltipMode'..SMITHING_MODE_RESEARCH, value) end)
-	LAM:AddDescription(panel, addonName..'Description', 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.', nil)
+		{
+			type = 'checkbox',
+			name = 'Item Details',
+			tooltip = 'Enable display of item details such as item style.',
+			getFunc = function() return GetSetting('showInfo') end,
+			setFunc = function(value) SetSetting('showInfo', value) end,
+		},
+		{
+			type = 'description',
+			text = 'Hint: Hold down SHIFT to compare to your alternate weapon set.',
+		},
+
+		{ type = 'header', name = 'Compare in crafting mode', },
+		{
+			type = 'checkbox',
+			name = 'Creation',
+			tooltip = 'Enable item comparison when in "Creation" mode',
+			getFunc = function() return GetSetting('compareMode'..SMITHING_MODE_CREATE) end,
+			setFunc = function(value) SetSetting('compareMode'..SMITHING_MODE_CREATE, value) end,
+		},
+		{
+			type = 'checkbox',
+			name = 'Improvement',
+			tooltip = 'Enable item comparison when in "Improvement" mode',
+			getFunc = function() return GetSetting('compareMode'..SMITHING_MODE_IMPROVE) end,
+			setFunc = function(value) SetSetting('compareMode'..SMITHING_MODE_IMPROVE, value) end,
+		},
+		{
+			type = 'dropdown',
+			name = 'Deconstruction',
+			tooltip = 'Select if and how to compare in "Deconstruction" mode',
+			choices = {'None', 'PopupTooltip', 'ComparativeTooltip'},
+			getFunc = function() return GetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT) end,
+			setFunc = function(value) SetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT, value) end,
+		},
+		{
+			type = 'dropdown',
+			name = 'Research',
+			tooltip = 'Select if and how to compare in "Research" mode',
+			choices = {'None', 'PopupTooltip', 'ComparativeTooltip'},
+			getFunc = function() return GetSetting('compareMode'..SMITHING_MODE_RESEARCH) end,
+			setFunc = function(value) SetSetting('compareMode'..SMITHING_MODE_RESEARCH, value) end,
+		},
+		{
+			type = 'description',
+			text = 'PopupTooltip can be moved and closed.\nComparativeTooltip is attached to the normal item tooltip.',
+		},
+	}
+	local LAM = LibStub('LibAddonMenu-2.0')
+	LAM:RegisterAddonPanel(addonName, panelData)
+	LAM:RegisterOptionControls(addonName, optionsTable)
+end
+
+local function UpdateSavedVariables(defaultSettings)
+	local savedVars = _G[addonName..'DB']
+	local account, character = GetDisplayName(), GetUnitName('player')
+	if savedVars and savedVars['Default'] then savedVars = savedVars['Default'][account] end
+	if not savedVars then return end
+
+	for character, data in pairs(savedVars) do
+		if character == '$AccountWide' then
+			-- merge style & mode
+			if data['compareMode'..SMITHING_MODE_DECONSTRUCT] and data['tooltipMode'..SMITHING_MODE_DECONSTRUCT] then
+				data['compareMode'..SMITHING_MODE_DECONSTRUCT] = data['tooltipMode'..SMITHING_MODE_DECONSTRUCT]
+			end
+			if data['compareMode'..SMITHING_MODE_RESEARCH] and data['tooltipMode'..SMITHING_MODE_RESEARCH] then
+				data['compareMode'..SMITHING_MODE_RESEARCH] = data['tooltipMode'..SMITHING_MODE_RESEARCH]
+			end
+
+			-- remove leftover settings
+			for setting, value in pairs(data) do
+				if defaultSettings[setting] == nil then
+					data[setting] = nil
+				end
+			end
+		else
+			-- remove leftover non-account settings
+			savedVars[character] = nil
+		end
+	end
 end
 
 -- ========================================================
@@ -214,7 +275,8 @@ local anchors = {
 }
 local function Update()
 	local mode = SMITHING.mode
-	if not mode or not GetSetting('compareMode'..mode) then return end
+	local compareStyle = GetSetting('compareMode'..mode)
+	if not mode or not compareStyle or compareStyle == 'None' then return end
 
 	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
 		UpdateComparativeTooltips()
@@ -276,15 +338,15 @@ local function Initialize(eventID, arg1, ...)
 	if arg1 ~= addonName then return end
 	em:UnregisterForEvent(addonName, _G.EVENT_ADD_ON_LOADED)
 
-	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 2, nil, {
-		['tooltipMode'..SMITHING_MODE_DECONSTRUCT] = 'PopupTooltip',
-		['tooltipMode'..SMITHING_MODE_RESEARCH] = 'PopupTooltip',
+	local defaultSettings = {
 		['compareMode'..SMITHING_MODE_CREATE] = true,
 		['compareMode'..SMITHING_MODE_IMPROVE] = true,
-		['compareMode'..SMITHING_MODE_DECONSTRUCT] = true,
-		['compareMode'..SMITHING_MODE_RESEARCH] = true,
+		['compareMode'..SMITHING_MODE_DECONSTRUCT] = 'PopupTooltip',
+		['compareMode'..SMITHING_MODE_RESEARCH] = 'PopupTooltip',
 		showInfo = true,
-	})
+	}
+	UpdateSavedVariables(defaultSettings)
+	addon.db = ZO_SavedVars:NewAccountWide(addonName..'DB', 2, nil, defaultSettings)
 
 	local wm = GetWindowManager()
 	local compareTooltip = wm:CreateControlFromVirtual(addonName..'Tooltip', PopupTooltip, 'ZO_ItemIconTooltip')
@@ -316,12 +378,13 @@ local function Initialize(eventID, arg1, ...)
 			isSHIFTCompared = shift
 
 			local mode = SMITHING.mode
+			local compareStyle = GetSetting('compareMode'..mode)
 			-- only show research PopupTooltip when dialog is actually open
 			local prevent = mode == SMITHING_MODE_RESEARCH
-				and GetSetting('tooltipMode'..mode) == 'PopupTooltip'
+				and compareStyle == 'PopupTooltip'
 				and ZO_InventorySlot_GetItemListDialog():GetControl():IsHidden()
 
-			if GetSetting('compareMode'..mode) and not prevent then
+			if compareStyle and compareStyle ~= 'None' and not prevent then
 				Update()
 			end
 		end
@@ -336,7 +399,8 @@ local function Initialize(eventID, arg1, ...)
 		PopupTooltip:SetHidden(true)
 		addon.resultTooltip:SetHidden(true)
 
-		if GetSetting('compareMode'..mode) and mode ~= SMITHING_MODE_RESEARCH then
+		local compareStyle = GetSetting('compareMode'..mode)
+		if compareStyle and compareStyle ~= 'None' and mode ~= SMITHING_MODE_RESEARCH then
 			-- delay 1ms so original SetMode has completed
 			zo_callLater(Update, 1)
 		end
@@ -383,9 +447,8 @@ local function Initialize(eventID, arg1, ...)
 	ItemTooltip.SetBagItem = function(self, bag, slot)
 		orig(self, bag, slot)
 
-		if not SMITHING.control:IsHidden()
-			and GetSetting('compareMode'..SMITHING.mode)
-			and GetSetting('tooltipMode'..SMITHING.mode) == 'ComparativeTooltip' then
+		local compareStyle = GetSetting('compareMode'..SMITHING.mode)
+		if not SMITHING.control:IsHidden() and compareStyle and compareStyle == 'ComparativeTooltip' then
 			UpdateComparativeTooltips()
 		end
 	end
