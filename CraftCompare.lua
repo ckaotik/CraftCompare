@@ -125,7 +125,7 @@ local function UpdateSavedVariables(defaultSettings)
 
 			-- remove leftover settings
 			for setting, value in pairs(data) do
-				if defaultSettings[setting] == nil then
+				if setting ~= 'version' and defaultSettings[setting] == nil then
 					data[setting] = nil
 				end
 			end
@@ -278,7 +278,7 @@ local function Update()
 	local compareStyle = GetSetting('compareMode'..mode)
 	if not mode or not compareStyle or compareStyle == 'None' then return end
 
-	if GetSetting('tooltipMode'..mode) == 'ComparativeTooltip' then
+	if compareStyle == 'ComparativeTooltip' then
 		UpdateComparativeTooltips()
 	else
 		local itemLink
@@ -426,7 +426,7 @@ local function Initialize(eventID, arg1, ...)
 
 	-- update our custom deconstruct tooltip
 	ZO_PreHook(SMITHING.deconstructionPanel, 'SetExtractionSlotItem', function(extractionSlot, bag, slot)
-		if GetSetting('tooltipMode'..SMITHING_MODE_DECONSTRUCT) ~= 'PopupTooltip' then return end
+		if GetSetting('compareMode'..SMITHING_MODE_DECONSTRUCT) ~= 'PopupTooltip' then return end
 
 		local tooltip = addon.resultTooltip
 		if bag and slot then
