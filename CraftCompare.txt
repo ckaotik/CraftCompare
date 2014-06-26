@@ -4,7 +4,7 @@
 ## OptionalDependsOn: LibAddonMenu-1.0
 ## SavedVariables: CraftCompareDB
 
-## APIVersion: 100004
+## APIVersion: 100007
 ## Version: 1.10
 
 libs\LibStub\LibStub.lua
