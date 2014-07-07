@@ -43,7 +43,7 @@ local function CreateSettings()
 		type = 'panel',
 		name = addonName,
 		author = 'ckaotik',
-		version = '1.10',
+		version = '1.12',
 		registerForRefresh = true,
 		registerForDefaults = true,
 	}
@@ -224,7 +224,11 @@ local function UpdateTooltips(slot, otherSlot, tooltip, otherTooltip)
 		AddCraftingItemInfo(tooltip, itemLink, slot)
 	else
 		ClearTooltip(tooltip)
-		ZO_PlayHideAnimationOnComparisonTooltip(tooltip)
+		if tooltip == PopupTooltip then
+			ZO_PopupTooltip_Hide()
+		else
+			ZO_PlayHideAnimationOnComparisonTooltip(tooltip)
+		end
 		tooltip = nil
 	end
 
